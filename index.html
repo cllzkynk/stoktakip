@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StokTakip</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDnXyD2Z93hYtAjQflNa-HsX0hWvO9KFBY",
+  authDomain: "stoktakip-d0d10.firebaseapp.com",
+  projectId: "stoktakip-d0d10",
+  storageBucket: "stoktakip-d0d10.firebasestorage.app",
+  messagingSenderId: "121565583258",
+  appId: "1:121565583258:web:77b6bde1a7e21ca4f5cc23",
+  measurementId: "G-T0G8EGD7CM"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// ============================================================
+// FIRESTORE DB LAYER
+// ============================================================
+// Collections: purchases, sales, savings, categories, settings
+// settings doc: "openingBalances"
+
+async function fsGet(col, id) {
+  try {
+    const snap = await getDoc(doc(db, col, id));
+    return snap.exists() ? snap.data() : null;
+  } catch(e) { console.error('fsGet', e); return null; }
+}
+
+async function fsSet(col, id, data) {
+  try { await setDoc(doc(db, col, id), data); } catch(e) { console.error('fsSet', e); }
+}
+
+async function fsDelete(col, id) {
+  try { await deleteDoc(doc(db, col, id)); } catch(e) { console.error('fsDelete', e); }
+}
+
+async function fsGetAll(col) {
+  try {
+    const snap = await getDocs(collection(db, col));
+    return snap.docs.map(d => d.data());
+  } catch(e) { console.error('fsGetAll', e); return []; }
+}
+
+// High-level data functions (all async)
+async function getCategories() {
+  const d = await fsGet('settings', 'categories');
+  return d ? d.list : DEFAULT_CATS;
+}
+async function saveCategories(list) { await fsSet('settings', 'categories', {list}); }
+
+async function getPurchases() { return await fsGetAll('purchases'); }
+async function savePurchase(item) { await fsSet('purchases', item.id, item); }
+async function deletePurchase(id) { await fsDelete('purchases', id); }
+
+async function getSales() { return await fsGetAll('sales'); }
+async function saveSale(sale) { await fsSet('sales', sale.id, sale); }
+async function deleteSaleById(id) { await fsDelete('sales', id); }
+
+async function getSavings() { return await fsGetAll('savings'); }
+async function saveSavingItem(s) { await fsSet('savings', s.id, s); }
+async function deleteSavingItem(id) { await fsDelete('savings', id); }
+
+async function getOpeningBalances() {
+  const d = await fsGet('settings', 'openingBalances');
+  return d || {stokke:0,personal:0,vinted:0,wise:0,nakit:0};
+}
+async function saveOpeningBalancesData(data) { await fsSet('settings', 'openingBalances', data); }
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+const DEFAULT_CATS=[
+  {id:'sandalye',name:'Sandalye',subs:['Eski Tip','Yeni Tip','Yedek Parça']},
+  {id:'minder',name:'Minder',subs:[]},
+  {id:'babyset',name:'Babyset',subs:['Eski Tip','Yeni Tip V1','Yeni Tip V2','Yeni Tip V3','Ön Kemer 1','Ön Kemer 2','Ön Kemer 3']},
+  {id:'kemer',name:'Kemer',subs:[]},
+  {id:'newborn',name:'Newborn',subs:[]},
+  {id:'tepsi',name:'Tepsi',subs:['Eski Tip','Yeni Tip']}
+];
+const COLORS=['Natural','Kahve Rengi','Koyu Kahve','White Wash','Beyaz','Siyah','Gri','Bej','Kahverengi','Kırmızı','Mavi','Yeşil','Sarı','Pembe','Mor','Turkuaz','Turuncu','Gümüş','Altın','Krem','Lacivert','Bordo'];
+const COLOR_HEX={'Natural':'#d4b896','Kahve Rengi':'#a0522d','Koyu Kahve':'#3d1c02','White Wash':'#e8e0d5','Beyaz':'#f8f9fa','Siyah':'#1a1a1a','Gri':'#888','Bej':'#c9b99a','Kahverengi':'#8B4513','Kırmızı':'#e74c3c','Mavi':'#3498db','Yeşil':'#27ae60','Sarı':'#f1c40f','Pembe':'#e91e8c','Mor':'#9b59b6','Turkuaz':'#1abc9c','Turuncu':'#e67e22','Gümüş':'#bdc3c7','Altın':'#FFD700','Krem':'#fffdd0','Lacivert':'#1a237e','Bordo':'#800000'};
+const WALLETS=[
+  {id:'stokke', label:'Stokke Cüzdanı', icon:'💳', payField:'payStokke', saleValue:'Stokke Cüzdanı'},
+  {id:'personal', label:'Şahsi Hesap', icon:'🏦', payField:'payPersonal', saleValue:'Şahsi Hesap'},
+  {id:'vinted', label:'Vinted Bakiye', icon:'🛍️', payField:'payVinted', saleValue:'Vinted Bakiye'},
+  {id:'wise', label:'Wise', icon:'💙', payField:'payWise', saleValue:'Wise'},
+  {id:'nakit', label:'Nakit', icon:'💵', payField:null, saleValue:'Nakit'}
+];
+
+// ============================================================
+// HELPERS
+// ============================================================
+function totalPay(p){return(p.payStokke||0)+(p.payPersonal||0)+(p.payVinted||0)+(p.payWise||0)}
+function fmt(n){return'€'+(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',')}
+function today(){return new Date().toISOString().split('T')[0]}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).substr(2)}
+function showAlert(elId,msg,type,dur=3500){const el=document.getElementById(elId);if(!el)return;el.innerHTML=`<div class="alert alert-${type}">${msg}</div>`;if(dur>0)setTimeout(()=>{if(el)el.innerHTML=''},dur)}
+function openModal(id){document.getElementById(id).classList.add('open')}
+function closeModal(id){document.getElementById(id).classList.remove('open')}
+function setLoading(show){document.getElementById('global-loader').style.display=show?'flex':'none'}
+function populateCatSelect(id,cats){const el=document.getElementById(id);if(!el)return;const v=el.value;el.innerHTML='<option value="">Seç...</option>';cats.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;el.appendChild(o)});if(v)el.value=v}
+function populateColorSelect(id){const el=document.getElementById(id);if(!el)return;el.innerHTML='<option value="">Seç...</option>';COLORS.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;el.appendChild(o)})}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+let dashPeriod='month';
+async function navigate(page){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n=>{if(n.getAttribute('onclick')?.includes("'"+page+"'"))n.classList.add('active')});
+  if(page==='dashboard')await renderDashboard();
+  if(page==='stock')await renderStock();
+  if(page==='buy')await renderBuyForm();
+  if(page==='sell')await renderSellForm();
+  if(page==='stats')await renderStats();
+  if(page==='savings')await renderSavings();
+  if(page==='categories')await renderCategories();
+  if(page==='settings')await renderSettings();
+}
+
+// ============================================================
+// WALLET BALANCE CALCULATOR
+// ============================================================
+async function calcWalletBalances(){
+  const [purchases, sales, opening] = await Promise.all([getPurchases(), getSales(), getOpeningBalances()]);
+  const balances={};
+  WALLETS.forEach(w=>{
+    let out=0,inn=0;
+    if(w.payField)purchases.forEach(p=>{out+=p[w.payField]||0});
+    sales.forEach(s=>{if(s.payTo===w.saleValue)inn+=s.price||0});
+    balances[w.id]={...w,out,in:inn,opening:opening[w.id]||0,net:(opening[w.id]||0)+inn-out};
+  });
+  return balances;
+}
+
+async function calcGrossProfit(){
+  const [purchases, sales] = await Promise.all([getPurchases(), getSales()]);
+  return sales.reduce((a,s)=>{const p=purchases.find(x=>x.id===s.itemId);return a+(s.price-(p?totalPay(p):0))},0);
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+function setDashPeriod(p){
+  dashPeriod=p;
+  document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+p).classList.add('active');
+  const ms=document.getElementById('dash-month-sel'),ys=document.getElementById('dash-year-sel');
+  ms.style.display=p==='month'?'':'none';
+  ys.style.display=(p==='month'||p==='year')?'':'none';
+  renderDashboard();
+}
+
+async function renderDashboard(){
+  setLoading(true);
+  const now=new Date();
+  const ms=document.getElementById('dash-month-sel'),ys=document.getElementById('dash-year-sel');
+  if(!ms.children.length){
+    ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'].forEach((m,i)=>{const o=document.createElement('option');o.value=i;o.textContent=m;if(i===now.getMonth())o.selected=true;ms.appendChild(o)});
+  }
+  if(!ys.children.length){for(let y=now.getFullYear();y>=2022;y--){const o=document.createElement('option');o.value=y;o.textContent=y;if(y===now.getFullYear())o.selected=true;ys.appendChild(o)}}
+  ms.style.display=dashPeriod==='month'?'':'none';
+  ys.style.display=(dashPeriod==='month'||dashPeriod==='year')?'':'none';
+  const selMonth=parseInt(ms.value),selYear=parseInt(ys.value)||now.getFullYear();
+  const [purchases, sales, savings, wb] = await Promise.all([getPurchases(), getSales(), getSavings(), calcWalletBalances()]);
+  function inPeriod(d){if(!d)return dashPeriod==='all';const dt=new Date(d);if(dashPeriod==='month')return dt.getMonth()===selMonth&&dt.getFullYear()===selYear;if(dashPeriod==='year')return dt.getFullYear()===selYear;return true}
+  const fB=purchases.filter(p=>inPeriod(p.date)),fS=sales.filter(s=>inPeriod(s.date));
+  const spent=fB.reduce((a,p)=>a+totalPay(p),0),rev=fS.reduce((a,s)=>a+(s.price||0),0),profit=rev-spent;
+  const unsold=purchases.filter(p=>!sales.find(s=>s.itemId===p.id)).length;
+  const gp=sales.reduce((a,s)=>{const p=purchases.find(x=>x.id===s.itemId);return a+(s.price-(p?totalPay(p):0))},0);
+  const totalSav=savings.reduce((a,s)=>a+s.amount,0),activeCap=gp-totalSav;
+  document.getElementById('dash-stats').innerHTML=`
+    <div class="stat-card"><div class="stat-label">Toplam Gelir</div><div class="stat-value green">${fmt(rev)}</div><div class="stat-sub">${fS.length} satış</div></div>
+    <div class="stat-card"><div class="stat-label">Toplam Masraf</div><div class="stat-value blue">${fmt(spent)}</div><div class="stat-sub">${fB.length} alış</div></div>
+    <div class="stat-card"><div class="stat-label">Net Kar</div><div class="stat-value ${profit>=0?'green':'orange'}">${fmt(profit)}</div><div class="stat-sub">${rev>0?Math.round(profit/rev*100):0}% marj</div></div>
+    <div class="stat-card"><div class="stat-label">Stokta</div><div class="stat-value pink">${unsold}</div><div class="stat-sub">bekleyen ürün</div></div>
+    <div class="stat-card" style="border-color:#1e40af"><div class="stat-label">⚡ Aktif Varlık</div><div class="stat-value ${activeCap>=0?'blue':'orange'}">${fmt(activeCap)}</div><div class="stat-sub">Ticarette dönen</div></div>
+    <div class="stat-card" style="border-color:#166534"><div class="stat-label">🏦 Tasarruf</div><div class="stat-value green">${fmt(totalSav)}</div><div class="stat-sub">Çekilen toplam</div></div>`;
+  // Chart
+  const md=[];for(let i=5;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1),m=d.getMonth(),y=d.getFullYear();const r=sales.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===m&&sd.getFullYear()===y}).reduce((a,s)=>a+(s.price||0),0);const e=purchases.filter(p=>{const pd=new Date(p.date);return pd.getMonth()===m&&pd.getFullYear()===y}).reduce((a,p)=>a+totalPay(p),0);md.push({label:['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'][m],rev:r,exp:e})}
+  const mx=Math.max(...md.map(d=>Math.max(d.rev,d.exp)),1);
+  document.getElementById('monthly-chart').innerHTML=`<div class="bar-chart" style="height:120px">${md.map(d=>`<div class="bar-col"><div style="display:flex;gap:2px;align-items:flex-end;height:100px"><div class="bar" style="background:var(--accent);width:14px;height:${d.rev/mx*100}px" title="Gelir:${fmt(d.rev)}"></div><div class="bar" style="background:var(--accent2);width:14px;height:${d.exp/mx*100}px" title="Masraf:${fmt(d.exp)}"></div></div><div class="bar-label">${d.label}</div></div>`).join('')}</div><div style="display:flex;gap:16px;margin-top:8px"><div style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--text2)"><div style="width:10px;height:10px;background:var(--accent);border-radius:2px"></div>Gelir</div><div style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--text2)"><div style="width:10px;height:10px;background:var(--accent2);border-radius:2px"></div>Masraf</div></div>`;
+  // Recent tx
+  const allTx=[...sales.map(s=>({...s,type:'sale'})),...purchases.map(p=>({...p,type:'purchase'}))].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,8);
+  document.getElementById('recent-transactions').innerHTML=allTx.length?allTx.map(tx=>{const item=tx.type==='sale'?purchases.find(p=>p.id===tx.itemId):tx;const label=item?`${item.category}${item.subcat?' / '+item.subcat:''}`:'—';const amt=tx.type==='sale'?fmt(tx.price):fmt(totalPay(tx));const col=tx.type==='sale'?'var(--accent)':'var(--accent2)';const ic=tx.type==='sale'?'↗':'↙';return`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:center;gap:8px"><span style="color:${col};font-weight:700;font-size:1rem">${ic}</span><div><div style="font-size:.85rem">${label}</div><div style="font-size:.73rem;color:var(--text3)">${tx.date||'—'} · ${tx.type==='sale'?tx.platform:tx.source||'—'}</div></div></div><span style="font-family:var(--mono);font-size:.85rem;color:${col}">${amt}</span></div>`}).join(''):'<div class="empty"><p>Henüz işlem yok</p></div>';
+  // Wallets
+  document.getElementById('wallet-balances').innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">${WALLETS.map(w=>{const b=wb[w.id];return`<div class="wallet-card"><div style="display:flex;align-items:center;gap:6px;margin-bottom:10px"><span style="font-size:1.1rem">${w.icon}</span><span style="font-size:.85rem;font-weight:600">${w.label}</span></div><div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:3px"><span style="color:var(--text3)">Başlangıç:</span><span style="color:var(--text2)">${fmt(b.opening)}</span></div><div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:3px"><span style="color:var(--text3)">Giren:</span><span style="color:var(--accent)">${fmt(b.in)}</span></div><div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:8px"><span style="color:var(--text3)">Çıkan:</span><span style="color:var(--danger)">${fmt(b.out)}</span></div><div style="border-top:1px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:.75rem;font-family:var(--mono);color:var(--text3)">NET</span><span style="font-family:var(--mono);font-size:1rem;font-weight:700;${b.net>=0?'color:var(--accent)':'color:var(--danger)'}">${fmt(b.net)}</span></div></div>`}).join('')}</div>`;
+  setLoading(false);
+}
+
+// ============================================================
+// STOCK
+// ============================================================
+async function renderStock(){
+  setLoading(true);
+  const search=(document.getElementById('stock-search')?.value||'').toLowerCase();
+  const catFilter=document.getElementById('stock-cat-filter')?.value||'';
+  const statusFilter=document.getElementById('stock-status-filter')?.value;
+  const [purchases, sales, cats] = await Promise.all([getPurchases(), getSales(), getCategories()]);
+  const catSel=document.getElementById('stock-cat-filter');
+  if(catSel&&catSel.children.length<=1){cats.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;catSel.appendChild(o)})}
+  const soldIds=new Set(sales.map(s=>s.itemId));
+  let items=purchases.map(p=>({...p,sold:soldIds.has(p.id),saleInfo:sales.find(s=>s.itemId===p.id)}));
+  if(statusFilter==='active')items=items.filter(i=>!i.sold);
+  else if(statusFilter==='sold')items=items.filter(i=>i.sold);
+  if(catFilter)items=items.filter(i=>i.categoryId===catFilter);
+  if(search)items=items.filter(i=>(i.category+i.subcat+i.color+i.notes).toLowerCase().includes(search));
+  items.sort((a,b)=>new Date(b.date)-new Date(a.date));
+  document.getElementById('stock-list').innerHTML=items.length?`<div class="stock-grid">${items.map(item=>{const cost=totalPay(item);return`<div class="stock-card" onclick="openStockModal('${item.id}')"><div class="stock-card-img">${item.photoData?`<img src="${item.photoData}" alt="">`:'📦'}</div><div class="stock-card-body"><div class="stock-card-title">${item.category}${item.subcat?' · '+item.subcat:''}</div><div class="stock-card-sub">${item.color?`<span class="color-dot" style="background:${COLOR_HEX[item.color]||'#888'}"></span>${item.color}`:''}${item.date?' · '+item.date:''}</div><div class="stock-card-footer"><span class="stock-card-price">${fmt(cost)}</span>${item.sold?`<span class="badge badge-green">Satıldı</span>`:`<span class="badge badge-blue">Stokta</span>`}</div></div></div>`}).join('')}</div>`:'<div class="empty"><div class="empty-icon">📦</div><p>Ürün bulunamadı</p></div>';
+  setLoading(false);
+}
+
+async function openStockModal(id){
+  const [purchases, sales] = await Promise.all([getPurchases(), getSales()]);
+  const item=purchases.find(p=>p.id===id);if(!item)return;
+  const sale=sales.find(s=>s.itemId===id),cost=totalPay(item);
+  document.getElementById('modal-title').textContent=`${item.category}${item.subcat?' / '+item.subcat:''}`;
+  const payRows=WALLETS.filter(w=>w.payField&&(item[w.payField]||0)>0).map(w=>`<div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:4px"><span>${w.icon} ${w.label}</span><span>${fmt(item[w.payField])}</span></div>`).join('');
+  document.getElementById('modal-body').innerHTML=`
+    <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+      ${item.photoData?`<img src="${item.photoData}" style="width:100px;height:100px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`:''}
+      <div style="flex:1;min-width:160px">
+        <div style="margin-bottom:6px"><span style="color:var(--text3);font-size:.78rem">Renk</span><br><span style="display:flex;align-items:center;gap:6px;margin-top:2px"><span class="color-dot" style="background:${COLOR_HEX[item.color]||'#888'}"></span>${item.color||'—'}</span></div>
+        <div style="margin-bottom:6px"><span style="color:var(--text3);font-size:.78rem">Alış Tarihi</span><br>${item.date||'—'}</div>
+        <div><span style="color:var(--text3);font-size:.78rem">Nereden</span><br>${item.source||'—'}</div>
+      </div>
+    </div>
+    <div style="background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="font-size:.75rem;color:var(--text3);font-family:var(--mono);text-transform:uppercase;margin-bottom:10px">Ödeme Detayı</div>
+      ${payRows||'<span style="color:var(--text3);font-size:.82rem">—</span>'}
+      <div style="border-top:1px solid var(--border);margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:600"><span>Toplam Maliyet</span><span style="color:var(--accent2)">${fmt(cost)}</span></div>
+    </div>
+    ${sale?`<div style="background:#052e16;border:1px solid #166534;border-radius:8px;padding:14px;margin-bottom:12px">
+      <div style="font-size:.75rem;color:var(--accent);font-family:var(--mono);text-transform:uppercase;margin-bottom:10px">Satış Bilgisi</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.85rem">
+        <div><span style="color:var(--text3)">Platform</span><br>${sale.platform}</div>
+        <div><span style="color:var(--text3)">Tarih</span><br>${sale.date}</div>
+        <div><span style="color:var(--text3)">Satış Fiyatı</span><br><span style="color:var(--accent)">${fmt(sale.price)}</span></div>
+        <div><span style="color:var(--text3)">Kar</span><br><span style="color:var(--accent);font-weight:600">${fmt(sale.price-cost)}</span></div>
+      </div>
+      <div style="margin-top:10px;display:flex;justify-content:flex-end">
+        <button class="btn btn-danger btn-sm" onclick="confirmDeleteSale('${sale.id}','${item.id}')">🗑 Satışı Sil</button>
+      </div>
+    </div>`:`<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+      <button class="btn btn-danger btn-sm" onclick="deleteItemAction('${item.id}')">🗑 Alışı Sil</button>
+      <button class="btn btn-primary btn-sm" onclick="closeModal('stock-modal');navigate('sell')">Sat →</button>
+    </div>`}
+    ${item.notes?`<div style="margin-top:10px;font-size:.82rem;color:var(--text2)">📝 ${item.notes}</div>`:''}`;
+  openModal('stock-modal');
+}
+
+async function deleteItemAction(id){
+  if(!confirm('Bu alışı silmek istediğinize emin misiniz?'))return;
+  setLoading(true);
+  await deletePurchase(id);
+  closeModal('stock-modal');
+  await renderStock();
+  setLoading(false);
+}
+
+async function confirmDeleteSale(saleId, itemId){
+  const [purchases, sales] = await Promise.all([getPurchases(), getSales()]);
+  const item=purchases.find(p=>p.id===itemId);
+  const sale=sales.find(s=>s.id===saleId);if(!sale)return;
+  const cost=item?totalPay(item):0;
+  document.getElementById('delete-sale-body').innerHTML=`
+    <p style="margin-bottom:16px;color:var(--text2);font-size:.85rem">Bu satış kaydı silinecek. Ürün tekrar <strong style="color:var(--accent2)">stokta</strong> görünecek.</p>
+    <div style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:.85rem">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--text3)">Satış Fiyatı:</span><span>${fmt(sale.price)}</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--text3)">Platform:</span><span>${sale.platform}</span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">Tarih:</span><span>${sale.date}</span></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="closeModal('delete-sale-modal')">İptal</button>
+      <button class="btn btn-danger" onclick="deleteSaleConfirmed('${saleId}')">Satışı Sil</button>
+    </div>`;
+  closeModal('stock-modal');
+  openModal('delete-sale-modal');
+}
+
+async function deleteSaleConfirmed(saleId){
+  setLoading(true);
+  await deleteSaleById(saleId);
+  closeModal('delete-sale-modal');
+  await renderStock();
+  setLoading(false);
+}
+
+// ============================================================
+// BUY FORM
+// ============================================================
+async function renderBuyForm(){
+  const cats = await getCategories();
+  populateCatSelect('buy-cat', cats);
+  populateColorSelect('buy-color');
+  const d=document.getElementById('buy-date');if(!d.value)d.value=today();
+  await renderRecentBuys();
+}
+
+async function renderRecentBuys(){
+  const p=(await getPurchases()).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,6);
+  const el=document.getElementById('recent-buys');if(!el)return;
+  el.innerHTML=p.length?`<table><thead><tr><th>Ürün</th><th>Renk</th><th>Tarih</th><th>Maliyet</th><th></th></tr></thead><tbody>${p.map(x=>`<tr><td>${x.category}${x.subcat?' / '+x.subcat:''}</td><td><span class="color-dot" style="background:${COLOR_HEX[x.color]||'#888'}"></span> ${x.color||'—'}</td><td>${x.date||'—'}</td><td style="font-family:var(--mono);color:var(--accent2)">${fmt(totalPay(x))}</td><td><button class="btn btn-danger btn-sm" onclick="deleteItemFromList('${x.id}')">✕</button></td></tr>`).join('')}</tbody></table>`:'<div class="empty"><p>Henüz alış yok</p></div>';
+}
+
+async function deleteItemFromList(id){
+  if(!confirm('Bu alışı silmek istediğinize emin misiniz?'))return;
+  setLoading(true);
+  await deletePurchase(id);
+  await renderRecentBuys();
+  setLoading(false);
+}
+
+async function updateSubcat(prefix){
+  const cats=await getCategories();
+  const catId=document.getElementById(prefix+'-cat').value,cat=cats.find(c=>c.id===catId),sub=document.getElementById(prefix+'-subcat');
+  sub.innerHTML='<option value="">—</option>';
+  if(cat&&cat.subs.length)cat.subs.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;sub.appendChild(o)});
+}
+
+function updatePayTotal(){
+  const s=parseFloat(document.getElementById('pay-stokke').value)||0;
+  const p=parseFloat(document.getElementById('pay-personal').value)||0;
+  const v=parseFloat(document.getElementById('pay-vinted').value)||0;
+  const w=parseFloat(document.getElementById('pay-wise').value)||0;
+  document.getElementById('pay-total').textContent=fmt(s+p+v+w);
+}
+
+function previewPhoto(prefix){
+  const file=document.getElementById(prefix+'-photo').files[0];if(!file)return;
+  const r=new FileReader();r.onload=e=>{document.getElementById(prefix+'-photo-preview').innerHTML=`<img src="${e.target.result}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;border:1px solid var(--border)">`};r.readAsDataURL(file);
+}
+
+async function savePurchaseAction(){
+  const cats=await getCategories();
+  const catId=document.getElementById('buy-cat').value,cat=cats.find(c=>c.id===catId);
+  if(!cat){showAlert('buy-alert','Kategori seçin!','error');return}
+  const s=parseFloat(document.getElementById('pay-stokke').value)||0;
+  const p=parseFloat(document.getElementById('pay-personal').value)||0;
+  const v=parseFloat(document.getElementById('pay-vinted').value)||0;
+  const w=parseFloat(document.getElementById('pay-wise').value)||0;
+  if(s+p+v+w<=0){showAlert('buy-alert','Ödeme miktarı girin!','error');return}
+  let photoData=null;const file=document.getElementById('buy-photo').files[0];
+  if(file)photoData=await new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(file)});
+  const item={id:uid(),categoryId:catId,category:cat.name,subcat:document.getElementById('buy-subcat').value,color:document.getElementById('buy-color').value,source:document.getElementById('buy-source').value,notes:document.getElementById('buy-notes').value,date:document.getElementById('buy-date').value||today(),payStokke:s,payPersonal:p,payVinted:v,payWise:w,photoData:photoData||null};
+  setLoading(true);
+  await savePurchase(item);
+  showAlert('buy-alert',`✓ ${cat.name} alışı kaydedildi! Maliyet: ${fmt(s+p+v+w)}`,'success');
+  document.getElementById('buy-cat').value='';document.getElementById('buy-subcat').innerHTML='<option value="">—</option>';
+  document.getElementById('buy-color').value='';document.getElementById('buy-source').value='';document.getElementById('buy-notes').value='';
+  document.getElementById('buy-photo').value='';document.getElementById('buy-photo-preview').innerHTML='';
+  document.getElementById('pay-stokke').value='';document.getElementById('pay-personal').value='';
+  document.getElementById('pay-vinted').value='';document.getElementById('pay-wise').value='';
+  document.getElementById('pay-total').textContent='€0.00';
+  await renderRecentBuys();
+  setLoading(false);
+}
+
+// ============================================================
+// SELL FORM
+// ============================================================
+async function renderSellForm(){
+  await populateSellItems();
+  const d=document.getElementById('sell-date');if(!d.value)d.value=today();
+  await renderRecentSells();
+}
+
+async function populateSellItems(){
+  const [purchases, sales] = await Promise.all([getPurchases(), getSales()]);
+  const soldIds=new Set(sales.map(s=>s.itemId));
+  const items=purchases.filter(p=>!soldIds.has(p.id));
+  const sel=document.getElementById('sell-item');
+  sel.innerHTML='<option value="">Stokta bekleyen ürün seç...</option>';
+  items.sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(item=>{const o=document.createElement('option');o.value=item.id;o.textContent=`${item.category}${item.subcat?' / '+item.subcat:''}${item.color?' — '+item.color:''} (${fmt(totalPay(item))})`;sel.appendChild(o)});
+  sel.onchange=()=>{
+    const id=sel.value,preview=document.getElementById('sell-item-preview');
+    if(!id){preview.style.display='none';return}
+    const item=items.find(i=>i.id===id);if(!item)return;
+    preview.style.display='flex';
+    preview.innerHTML=`${item.photoData?`<img src="${item.photoData}" style="width:52px;height:52px;object-fit:cover;border-radius:6px;border:1px solid var(--border)">`:`<div style="width:52px;height:52px;background:var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:1.3rem">📦</div>`}<div><div style="font-weight:600;font-size:.9rem">${item.category}${item.subcat?' / '+item.subcat:''}</div><div style="font-size:.78rem;color:var(--text2)">${item.color?item.color+' · ':''}Alış: ${fmt(totalPay(item))}</div><div style="font-size:.73rem;color:var(--text3)">${item.date||''}</div></div>`;
+  };
+}
+
+async function renderRecentSells(){
+  const [sales, purchases] = await Promise.all([getSales(), getPurchases()]);
+  const sorted=sales.sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,6);
+  const el=document.getElementById('recent-sells');if(!el)return;
+  el.innerHTML=sorted.length?`<table><thead><tr><th>Ürün</th><th>Platform</th><th>Tarih</th><th>Fiyat</th><th>Kar</th><th></th></tr></thead><tbody>${sorted.map(s=>{const p=purchases.find(x=>x.id===s.itemId);const cost=p?totalPay(p):0;const profit=s.price-cost;return`<tr><td>${p?p.category+(p.subcat?' / '+p.subcat:''):'—'}</td><td><span class="badge badge-blue">${s.platform}</span></td><td>${s.date||'—'}</td><td style="font-family:var(--mono);color:var(--accent)">${fmt(s.price)}</td><td style="font-family:var(--mono);color:${profit>=0?'var(--accent)':'var(--danger)'}">${fmt(profit)}</td><td><button class="btn btn-danger btn-sm" onclick="confirmDeleteSale('${s.id}','${s.itemId}')">✕</button></td></tr>`}).join('')}</tbody></table>`:'<div class="empty"><p>Henüz satış yok</p></div>';
+}
+
+async function saveSaleAction(){
+  const itemId=document.getElementById('sell-item').value;if(!itemId){showAlert('sell-alert','Ürün seçin!','error');return}
+  const price=parseFloat(document.getElementById('sell-price').value);if(!price||price<=0){showAlert('sell-alert','Satış fiyatı girin!','error');return}
+  const sale={id:uid(),itemId,platform:document.getElementById('sell-platform').value,date:document.getElementById('sell-date').value||today(),price,payTo:document.getElementById('sell-payment').value,notes:document.getElementById('sell-notes').value};
+  setLoading(true);
+  await saveSale(sale);
+  const purchases=await getPurchases();
+  const p=purchases.find(x=>x.id===itemId);const cost=p?totalPay(p):0;
+  showAlert('sell-alert',`✓ Satış kaydedildi! Kar: ${fmt(price-cost)}`,'success');
+  document.getElementById('sell-item').value='';document.getElementById('sell-item-preview').style.display='none';
+  document.getElementById('sell-price').value='';document.getElementById('sell-notes').value='';
+  await populateSellItems();await renderRecentSells();
+  setLoading(false);
+}
+
+// ============================================================
+// STATS
+// ============================================================
+async function renderStats(){
+  setLoading(true);
+  const [purchases, sales] = await Promise.all([getPurchases(), getSales()]);
+  const catStats={};
+  sales.forEach(s=>{const p=purchases.find(x=>x.id===s.itemId);if(!p)return;const k=p.category;if(!catStats[k])catStats[k]={sold:0,revenue:0,cost:0};catStats[k].sold++;catStats[k].revenue+=s.price;catStats[k].cost+=totalPay(p)});
+  const colorStats={};
+  sales.forEach(s=>{const p=purchases.find(x=>x.id===s.itemId);if(!p||!p.color)return;colorStats[p.color]=(colorStats[p.color]||0)+1});
+  const waitTimes=[];
+  sales.forEach(s=>{const p=purchases.find(x=>x.id===s.itemId);if(!p||!p.date||!s.date)return;const d=Math.round((new Date(s.date)-new Date(p.date))/86400000);if(d>=0)waitTimes.push(d)});
+  const avgWait=waitTimes.length?Math.round(waitTimes.reduce((a,b)=>a+b,0)/waitTimes.length):0;
+  const platStats={};sales.forEach(s=>{platStats[s.platform]=(platStats[s.platform]||0)+1});
+  const topCats=Object.entries(catStats).sort((a,b)=>b[1].sold-a[1].sold).slice(0,6);
+  const topColors=Object.entries(colorStats).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const soldIds=new Set(sales.map(s=>s.itemId));
+  document.getElementById('stats-content').innerHTML=`
+    <div class="grid4" style="margin-bottom:20px">
+      <div class="stat-card"><div class="stat-label">Toplam Alış</div><div class="stat-value blue">${purchases.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Toplam Satış</div><div class="stat-value green">${sales.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Ort. Bekleme</div><div class="stat-value pink">${avgWait} gün</div></div>
+      <div class="stat-card"><div class="stat-label">Stokta Bekleyen</div><div class="stat-value orange">${purchases.length-sales.length}</div></div>
+    </div>
+    <div class="grid2" style="margin-bottom:20px">
+      <div class="card"><div class="card-title">En Çok Satan Kategoriler</div>${topCats.length?`<table><thead><tr><th>Kategori</th><th>Satış</th><th>Gelir</th><th>Kar</th></tr></thead><tbody>${topCats.map(([cat,s])=>`<tr><td>${cat}</td><td>${s.sold}</td><td style="font-family:var(--mono);color:var(--accent)">${fmt(s.revenue)}</td><td style="font-family:var(--mono);color:${s.revenue-s.cost>=0?'var(--accent)':'var(--danger)'}">${fmt(s.revenue-s.cost)}</td></tr>`).join('')}</tbody></table>`:'<div class="empty"><p>Veri yok</p></div>'}</div>
+      <div class="card"><div class="card-title">En Çok Satan Renkler</div>${topColors.length?topColors.map(([color,count])=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:center;gap:8px"><span class="color-dot" style="background:${COLOR_HEX[color]||'#888'}"></span><span style="font-size:.85rem">${color}</span></div><span class="badge badge-blue">${count} satış</span></div>`).join(''):'<div class="empty"><p>Veri yok</p></div>'}</div>
+    </div>
+    <div class="grid2">
+      <div class="card"><div class="card-title">Platform Dağılımı</div>${Object.entries(platStats).length?Object.entries(platStats).sort((a,b)=>b[1]-a[1]).map(([plat,cnt])=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><span>${plat}</span><div style="display:flex;align-items:center;gap:8px"><div style="height:6px;border-radius:3px;background:var(--accent2);width:${Math.round(cnt/sales.length*80)}px"></div><span class="badge badge-gray">${cnt}</span></div></div>`).join(''):'<div class="empty"><p>Veri yok</p></div>'}</div>
+      <div class="card"><div class="card-title">Bekleyen Stok (Eski → Yeni)</div>${(()=>{const unsold=purchases.filter(p=>!soldIds.has(p.id)).sort((a,b)=>new Date(a.date)-new Date(b.date));if(!unsold.length)return'<div class="empty"><p>Stok yok</p></div>';return`<table><thead><tr><th>Ürün</th><th>Renk</th><th>Alış</th><th>Bekleme</th></tr></thead><tbody>${unsold.map(i=>{const days=Math.round((new Date()-new Date(i.date))/86400000);return`<tr><td>${i.category}${i.subcat?' / '+i.subcat:''}</td><td><span class="color-dot" style="background:${COLOR_HEX[i.color]||'#888'}"></span>${i.color||'—'}</td><td style="font-family:var(--mono)">${fmt(totalPay(i))}</td><td><span class="badge ${days>30?'badge-orange':'badge-gray'}">${days}g</span></td></tr>`}).join('')}</tbody></table>`})()}</div>
+    </div>`;
+  setLoading(false);
+}
+
+// ============================================================
+// SAVINGS
+// ============================================================
+async function renderSavings(){
+  setLoading(true);
+  const [savings, gp] = await Promise.all([getSavings(), calcGrossProfit()]);
+  const total=savings.reduce((a,s)=>a+s.amount,0);
+  const activeCapital=gp-total;
+  document.getElementById('savings-total').textContent=fmt(total);
+  document.getElementById('savings-count').textContent=`${savings.length} işlem`;
+  document.getElementById('gross-profit-sav').textContent=fmt(gp);
+  const capEl=document.getElementById('active-capital');
+  capEl.textContent=fmt(activeCapital);capEl.style.color=activeCapital>=0?'var(--accent2)':'var(--danger)';
+  const d=document.getElementById('sav-date');if(!d.value)d.value=today();
+  const el=document.getElementById('savings-list');
+  const sorted=savings.sort((a,b)=>new Date(b.date)-new Date(a.date));
+  el.innerHTML=sorted.length?`<table><thead><tr><th>Tarih</th><th>Tutar</th><th>Not</th><th></th></tr></thead><tbody>${sorted.map(s=>`<tr><td>${s.date}</td><td style="font-family:var(--mono);color:var(--accent)">${fmt(s.amount)}</td><td style="color:var(--text2)">${s.notes||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteSavingAction('${s.id}')">✕</button></td></tr>`).join('')}</tbody></table>`:'<div class="empty"><p>Henüz tasarruf yok</p></div>';
+  setLoading(false);
+}
+
+async function saveSavingAction(){
+  const amount=parseFloat(document.getElementById('sav-amount').value);if(!amount||amount<=0){showAlert('savings-alert','Geçerli tutar girin!','error');return}
+  const [gp, savings] = await Promise.all([calcGrossProfit(), getSavings()]);
+  const alreadySaved=savings.reduce((a,s)=>a+s.amount,0);
+  if(alreadySaved+amount>gp){showAlert('savings-alert',`Brüt kardan fazla çekilemez! Mevcut kar: ${fmt(gp)}, zaten çekilen: ${fmt(alreadySaved)}`,'error');return}
+  const s={id:uid(),amount,date:document.getElementById('sav-date').value||today(),notes:document.getElementById('sav-notes').value};
+  setLoading(true);
+  await saveSavingItem(s);
+  document.getElementById('sav-amount').value='';document.getElementById('sav-notes').value='';
+  showAlert('savings-alert',`✓ ${fmt(amount)} tasarrufa çekildi! Kalan: ${fmt(gp-alreadySaved-amount)}`,'success');
+  await renderSavings();
+  setLoading(false);
+}
+
+async function deleteSavingAction(id){
+  setLoading(true);
+  await deleteSavingItem(id);
+  await renderSavings();
+  setLoading(false);
+}
+
+// ============================================================
+// CATEGORIES
+// ============================================================
+async function renderCategories(){
+  const cats=await getCategories();
+  populateCatSelect('new-sub-parent', cats);
+  document.getElementById('cat-list').innerHTML=cats.map(c=>`<div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:600">${c.name}</span><button class="btn btn-danger btn-sm" onclick="deleteCategoryAction('${c.id}')">✕</button></div>${c.subs.length?`<div style="display:flex;flex-wrap:wrap;gap:6px">${c.subs.map((s,i)=>`<span class="badge badge-gray">${s} <button style="background:none;border:none;color:var(--text3);cursor:pointer;padding:0 2px;font-size:.8rem" onclick="deleteSubcatAction('${c.id}',${i})">✕</button></span>`).join('')}</div>`:'<span style="font-size:.78rem;color:var(--text3)">Alt kategori yok</span>'}</div>`).join('')||'<div class="empty"><p>Kategori yok</p></div>';
+}
+
+async function addCategoryAction(){
+  const name=document.getElementById('new-cat-name').value.trim();if(!name)return;
+  const cats=await getCategories();
+  if(cats.find(c=>c.name===name)){alert('Bu kategori zaten var!');return}
+  const id=name.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'')||uid();
+  cats.push({id,name,subs:[]});await saveCategories(cats);
+  document.getElementById('new-cat-name').value='';await renderCategories();
+}
+
+async function deleteCategoryAction(id){
+  if(!confirm('Kategoriyi sil?'))return;
+  const cats=await getCategories();
+  await saveCategories(cats.filter(c=>c.id!==id));await renderCategories();
+}
+
+async function addSubcategoryAction(){
+  const parentId=document.getElementById('new-sub-parent').value,name=document.getElementById('new-sub-name').value.trim();if(!parentId||!name)return;
+  const cats=await getCategories(),cat=cats.find(c=>c.id===parentId);if(!cat)return;
+  if(cat.subs.includes(name)){alert('Bu alt kategori zaten var!');return}
+  cat.subs.push(name);await saveCategories(cats);document.getElementById('new-sub-name').value='';await renderCategories();
+}
+
+async function deleteSubcatAction(catId,index){
+  const cats=await getCategories(),cat=cats.find(c=>c.id===catId);
+  if(cat){cat.subs.splice(index,1);await saveCategories(cats);}await renderCategories();
+}
+
+// ============================================================
+// SETTINGS
+// ============================================================
+async function renderSettings(){
+  const [opening, purchases, sales, savings] = await Promise.all([getOpeningBalances(), getPurchases(), getSales(), getSavings()]);
+  document.getElementById('wallet-opening-form').innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+      ${WALLETS.map(w=>`<div><label style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span>${w.icon}</span>${w.label}</label><input type="number" id="opening-${w.id}" value="${opening[w.id]||0}" min="0" step="0.01" placeholder="0.00"></div>`).join('')}
+    </div>`;
+  document.getElementById('backup-info').textContent=`${purchases.length} alış, ${sales.length} satış, ${savings.length} tasarruf kaydı mevcut.`;
+}
+
+async function saveOpeningBalancesAction(){
+  const balances={};
+  WALLETS.forEach(w=>{balances[w.id]=parseFloat(document.getElementById('opening-'+w.id)?.value)||0});
+  setLoading(true);
+  await saveOpeningBalancesData(balances);
+  showAlert('opening-alert','✓ Başlangıç bakiyeleri kaydedildi!','success');
+  await renderDashboard();
+  setLoading(false);
+}
+
+async function exportBackupAction(){
+  const [purchases, sales, savings, categories, opening] = await Promise.all([getPurchases(), getSales(), getSavings(), getCategories(), getOpeningBalances()]);
+  const data={version:3,exportDate:new Date().toISOString(),purchases,sales,savings,categories,openingBalances:opening};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`stoktakip-yedek-${new Date().toISOString().split('T')[0]}.json`;a.click();URL.revokeObjectURL(url);
+  showAlert('backup-info2','✓ Yedek indirildi.','success');
+}
+
+async function importBackupAction(){
+  const file=document.getElementById('restore-file').files[0];
+  if(!file){showAlert('restore-alert','Lütfen bir .json dosyası seçin.','error');return}
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      if(!data.purchases||!data.sales){showAlert('restore-alert','Geçersiz yedek dosyası.','error');return}
+      if(!confirm('Tüm mevcut veriler silinecek ve yedekten geri yüklenecek. Emin misiniz?'))return;
+      setLoading(true);
+      // Delete all existing
+      const [ep,es,esav]=await Promise.all([getPurchases(),getSales(),getSavings()]);
+      await Promise.all([...ep.map(p=>deletePurchase(p.id)),...es.map(s=>deleteSaleById(s.id)),...esav.map(s=>deleteSavingItem(s.id))]);
+      // Write new
+      await Promise.all([
+        ...data.purchases.map(p=>savePurchase(p)),
+        ...data.sales.map(s=>saveSale(s)),
+        ...(data.savings||[]).map(s=>saveSavingItem(s)),
+        saveCategories(data.categories||DEFAULT_CATS),
+        saveOpeningBalancesData(data.openingBalances||{stokke:0,personal:0,vinted:0,wise:0,nakit:0})
+      ]);
+      showAlert('restore-alert',`✓ Geri yükleme tamamlandı! ${data.purchases.length} alış, ${data.sales.length} satış yüklendi.`,'success',0);
+      await renderSettings();
+      setLoading(false);
+    }catch(err){showAlert('restore-alert','Hata: '+err.message,'error');setLoading(false)}
+  };
+  reader.readAsText(file);
+}
+
+async function resetAllDataAction(){
+  if(!confirm('TÜM veriler silinecek! Devam etmek istiyor musunuz?'))return;
+  if(!confirm('Son onay: Tüm alış, satış ve tasarruf kayıtları silinecek.'))return;
+  setLoading(true);
+  const [ep,es,esav]=await Promise.all([getPurchases(),getSales(),getSavings()]);
+  await Promise.all([...ep.map(p=>deletePurchase(p.id)),...es.map(s=>deleteSaleById(s.id)),...esav.map(s=>deleteSavingItem(s.id))]);
+  await Promise.all([saveCategories(DEFAULT_CATS),saveOpeningBalancesData({stokke:0,personal:0,vinted:0,wise:0,nakit:0})]);
+  showAlert('restore-alert','✓ Tüm veriler silindi.','success');
+  setLoading(false);
+  navigate('dashboard');
+}
+
+// ============================================================
+// MODAL CLOSE ON OVERLAY
+// ============================================================
+document.querySelectorAll('.modal-overlay').forEach(overlay=>{overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.classList.remove('open')})});
+
+// ============================================================
+// INIT
+// ============================================================
+window.navigate=navigate;
+window.setDashPeriod=setDashPeriod;
+window.renderStock=renderStock;
+window.openStockModal=openStockModal;
+window.deleteItemAction=deleteItemAction;
+window.deleteItemFromList=deleteItemFromList;
+window.updateSubcat=updateSubcat;
+window.updatePayTotal=updatePayTotal;
+window.previewPhoto=previewPhoto;
+window.savePurchaseAction=savePurchaseAction;
+window.saveSaleAction=saveSaleAction;
+window.confirmDeleteSale=confirmDeleteSale;
+window.deleteSaleConfirmed=deleteSaleConfirmed;
+window.saveSavingAction=saveSavingAction;
+window.deleteSavingAction=deleteSavingAction;
+window.addCategoryAction=addCategoryAction;
+window.deleteCategoryAction=deleteCategoryAction;
+window.addSubcategoryAction=addSubcategoryAction;
+window.deleteSubcatAction=deleteSubcatAction;
+window.saveOpeningBalancesAction=saveOpeningBalancesAction;
+window.exportBackupAction=exportBackupAction;
+window.importBackupAction=importBackupAction;
+window.resetAllDataAction=resetAllDataAction;
+window.closeModal=closeModal;
+
+navigate('dashboard');
+</script>
+<style>
+:root{--bg:#0f1117;--surface:#181b24;--surface2:#1e2230;--border:#2a2f3e;--accent:#4ade80;--accent2:#60a5fa;--accent3:#f472b6;--warn:#fb923c;--danger:#f87171;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}html{font-size:14px}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh}
+.app{display:flex;min-height:100vh}
+.sidebar{width:220px;min-height:100vh;background:var(--surface);border-right:1px solid var(--border);padding:20px 0;display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:100;overflow-y:auto}
+.sidebar-logo{padding:0 20px 20px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.sidebar-logo h1{font-family:var(--mono);font-size:1.1rem;color:var(--accent);letter-spacing:-0.5px}
+.sidebar-logo p{font-size:.75rem;color:var(--text3);margin-top:2px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;color:var(--text2);font-size:.875rem;font-weight:400;transition:all .15s;border-left:3px solid transparent}
+.nav-item:hover{background:var(--surface2);color:var(--text)}
+.nav-item.active{background:var(--surface2);color:var(--accent);border-left-color:var(--accent)}
+.nav-item .icon{font-size:1rem;width:20px;text-align:center}
+.nav-section{padding:16px 20px 6px;font-size:.65rem;color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-family:var(--mono)}
+.main{margin-left:220px;flex:1;padding:28px 32px;max-width:calc(100vw - 220px)}
+.page{display:none}.page.active{display:block}
+.page-header{margin-bottom:24px}
+.page-header h2{font-size:1.4rem;font-weight:600}
+.page-header p{color:var(--text2);font-size:.85rem;margin-top:4px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px}
+.card-title{font-family:var(--mono);font-size:.75rem;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+label{display:block;font-size:.8rem;color:var(--text2);margin-bottom:5px;font-weight:500}
+input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--sans);font-size:.875rem;padding:8px 12px;outline:none;transition:border-color .15s}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+select option{background:var(--surface)}
+.form-group{margin-bottom:14px}
+.form-row{display:grid;gap:14px}
+.form-row.cols2{grid-template-columns:1fr 1fr}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-family:var(--sans);font-size:.85rem;font-weight:500;transition:all .15s}
+.btn-primary{background:var(--accent);color:#0a1a0a}.btn-primary:hover{background:#22c55e}
+.btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border)}.btn-secondary:hover{border-color:var(--text2)}
+.btn-danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}.btn-danger:hover{background:var(--danger);color:white}
+.btn-sm{padding:5px 10px;font-size:.78rem}.btn-block{width:100%;justify-content:center}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px}
+.stat-label{font-size:.75rem;color:var(--text3);font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px}
+.stat-value{font-size:1.6rem;font-weight:600;font-family:var(--mono);margin-top:6px}
+.stat-value.green{color:var(--accent)}.stat-value.blue{color:var(--accent2)}.stat-value.pink{color:var(--accent3)}.stat-value.orange{color:var(--warn)}
+.stat-sub{font-size:.75rem;color:var(--text3);margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{text-align:left;padding:10px 12px;color:var(--text3);font-family:var(--mono);font-size:.72rem;text-transform:uppercase;border-bottom:1px solid var(--border);font-weight:400}
+td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
+tr:last-child td{border-bottom:none}tr:hover td{background:var(--surface2)}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:500;font-family:var(--mono)}
+.badge-green{background:#052e16;color:var(--accent);border:1px solid #166534}
+.badge-blue{background:#0c1a2e;color:var(--accent2);border:1px solid #1e40af}
+.badge-orange{background:#1c0a00;color:var(--warn);border:1px solid #7c2d12}
+.badge-gray{background:var(--surface2);color:var(--text2);border:1px solid var(--border)}
+.payment-split{background:var(--surface2);border-radius:8px;padding:14px;margin-top:8px}
+.payment-split .split-row{display:grid;grid-template-columns:1fr 120px;gap:8px;align-items:center;margin-bottom:8px}
+.tabs{display:flex;margin-bottom:20px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:4px;width:fit-content}
+.tab{padding:7px 16px;border-radius:6px;cursor:pointer;font-size:.82rem;font-weight:500;color:var(--text2);transition:all .15s}
+.tab.active{background:var(--surface2);color:var(--text)}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:100%;max-width:600px;max-height:90vh;overflow-y:auto;transform:translateY(10px);transition:transform .2s}
+.modal-overlay.open .modal{transform:translateY(0)}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.modal-header h3{font-size:1.1rem;font-weight:600}
+.modal-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:1.3rem;padding:4px}
+.alert{padding:12px 16px;border-radius:8px;font-size:.85rem;margin-bottom:16px}
+.alert-success{background:#052e16;border:1px solid #166534;color:var(--accent)}
+.alert-error{background:#1f0a0a;border:1px solid #7f1d1d;color:var(--danger)}
+.color-dot{width:14px;height:14px;border-radius:50%;display:inline-block;border:1px solid rgba(255,255,255,.2)}
+.stock-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;margin-top:16px}
+.stock-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:border-color .15s;cursor:pointer}
+.stock-card:hover{border-color:var(--text3)}
+.stock-card-img{width:100%;height:130px;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:2rem;overflow:hidden}
+.stock-card-img img{width:100%;height:130px;object-fit:cover}
+.stock-card-body{padding:12px}
+.stock-card-title{font-weight:600;font-size:.9rem;margin-bottom:4px}
+.stock-card-sub{font-size:.78rem;color:var(--text2);margin-bottom:8px;display:flex;align-items:center;gap:4px}
+.stock-card-footer{display:flex;justify-content:space-between;align-items:center}
+.stock-card-price{font-family:var(--mono);font-size:.85rem;color:var(--accent2)}
+.bar-chart{display:flex;align-items:flex-end;gap:6px;margin-top:8px}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px}
+.bar{width:100%;border-radius:4px 4px 0 0;min-height:4px}
+.bar-label{font-size:.6rem;color:var(--text3);font-family:var(--mono)}
+.filter-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.filter-bar input,.filter-bar select{width:auto;min-width:140px}
+.empty{text-align:center;padding:48px 20px;color:var(--text3)}
+.empty .empty-icon{font-size:2.5rem;margin-bottom:12px}
+.empty p{font-size:.9rem}
+.wallet-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px}
+#global-loader{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+.loader-spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#global-loader p{color:var(--text2);font-size:.85rem;font-family:var(--mono)}
+::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+@media(max-width:768px){.sidebar{width:60px}.sidebar-logo,.nav-item span,.nav-section{display:none}.main{margin-left:60px;padding:16px;max-width:calc(100vw - 60px)}.grid4{grid-template-columns:1fr 1fr}.grid2{grid-template-columns:1fr}.grid3{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- GLOBAL LOADER -->
+<div id="global-loader"><div class="loader-spinner"></div><p>Yükleniyor...</p></div>
+
+<div class="app">
+<aside class="sidebar">
+  <div class="sidebar-logo"><h1>StokTakip</h1><p>İkinci El Yönetim</p></div>
+  <div class="nav-section">Ana</div>
+  <div class="nav-item active" onclick="navigate('dashboard')"><span class="icon">📊</span><span>Özet</span></div>
+  <div class="nav-item" onclick="navigate('stock')"><span class="icon">📦</span><span>Stok</span></div>
+  <div class="nav-section">İşlemler</div>
+  <div class="nav-item" onclick="navigate('buy')"><span class="icon">🛒</span><span>Alış</span></div>
+  <div class="nav-item" onclick="navigate('sell')"><span class="icon">💸</span><span>Satış</span></div>
+  <div class="nav-section">Analiz</div>
+  <div class="nav-item" onclick="navigate('stats')"><span class="icon">📈</span><span>İstatistikler</span></div>
+  <div class="nav-item" onclick="navigate('savings')"><span class="icon">🏦</span><span>Tasarruf</span></div>
+  <div class="nav-section">Ayarlar</div>
+  <div class="nav-item" onclick="navigate('categories')"><span class="icon">🗂️</span><span>Kategoriler</span></div>
+  <div class="nav-item" onclick="navigate('settings')"><span class="icon">⚙️</span><span>Ayarlar</span></div>
+</aside>
+<main class="main">
+
+<div id="page-dashboard" class="page active">
+  <div class="page-header"><h2>Özet</h2><p>Finansal durum ve genel bakış</p></div>
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
+    <div class="tabs" style="margin-bottom:0">
+      <div class="tab active" id="tab-month" onclick="setDashPeriod('month')">Bu Ay</div>
+      <div class="tab" id="tab-year" onclick="setDashPeriod('year')">Bu Yıl</div>
+      <div class="tab" id="tab-all" onclick="setDashPeriod('all')">Tüm Zamanlar</div>
+    </div>
+    <select id="dash-month-sel" style="width:130px" onchange="renderDashboard()"></select>
+    <select id="dash-year-sel" style="width:90px" onchange="renderDashboard()"></select>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:14px;margin-bottom:20px" id="dash-stats"></div>
+  <div class="grid2" style="margin-bottom:16px">
+    <div class="card"><div class="card-title">Aylık Gelir / Gider (Son 6 Ay)</div><div id="monthly-chart"></div></div>
+    <div class="card"><div class="card-title">Son İşlemler</div><div id="recent-transactions"></div></div>
+  </div>
+  <div class="card"><div class="card-title">Cüzdan Bakiyeleri</div><div id="wallet-balances"></div></div>
+</div>
+
+<div id="page-stock" class="page">
+  <div class="page-header"><h2>Stok</h2><p>Mevcut ürünler</p></div>
+  <div class="filter-bar">
+    <input type="text" id="stock-search" placeholder="🔍 Ara..." oninput="renderStock()" style="width:200px">
+    <select id="stock-cat-filter" onchange="renderStock()"><option value="">Tüm Kategoriler</option></select>
+    <select id="stock-status-filter" onchange="renderStock()">
+      <option value="active">Stokta</option><option value="">Tümü</option><option value="sold">Satıldı</option>
+    </select>
+    <button class="btn btn-secondary btn-sm" onclick="navigate('buy')">+ Alış Ekle</button>
+  </div>
+  <div id="stock-list"></div>
+</div>
+
+<div id="page-buy" class="page">
+  <div class="page-header"><h2>Alış</h2><p>Yeni ürün al</p></div>
+  <div style="max-width:620px">
+    <div class="card">
+      <div id="buy-alert"></div>
+      <div class="form-row cols2">
+        <div class="form-group"><label>Kategori</label><select id="buy-cat" onchange="updateSubcat('buy')"><option value="">Seç...</option></select></div>
+        <div class="form-group"><label>Alt Kategori</label><select id="buy-subcat"><option value="">—</option></select></div>
+      </div>
+      <div class="form-row cols2">
+        <div class="form-group"><label>Renk</label><select id="buy-color"><option value="">Seç...</option></select></div>
+        <div class="form-group"><label>Nereden Aldım</label><input type="text" id="buy-source" placeholder="Vinted, FB, kişi..."></div>
+      </div>
+      <div class="form-group"><label>Notlar</label><input type="text" id="buy-notes" placeholder="Opsiyonel not"></div>
+      <div class="form-group"><label>Fotoğraf</label><input type="file" id="buy-photo" accept="image/*" onchange="previewPhoto('buy')"><div style="margin-top:8px" id="buy-photo-preview"></div></div>
+      <div class="form-group"><label>Satın Alma Tarihi</label><input type="date" id="buy-date"></div>
+      <div class="form-group">
+        <label>Ödeme <span style="color:var(--text3);font-weight:400">(karma ödeme desteklenir)</span></label>
+        <div class="payment-split">
+          <div class="split-row"><label style="margin:0;color:var(--text)">💳 Stokke Cüzdanı</label><input type="number" id="pay-stokke" placeholder="0.00" min="0" step="0.01" oninput="updatePayTotal()"></div>
+          <div class="split-row"><label style="margin:0;color:var(--text)">🏦 Şahsi Hesap</label><input type="number" id="pay-personal" placeholder="0.00" min="0" step="0.01" oninput="updatePayTotal()"></div>
+          <div class="split-row"><label style="margin:0;color:var(--text)">🛍️ Vinted Bakiye</label><input type="number" id="pay-vinted" placeholder="0.00" min="0" step="0.01" oninput="updatePayTotal()"></div>
+          <div class="split-row"><label style="margin:0;color:var(--text)">💙 Wise</label><input type="number" id="pay-wise" placeholder="0.00" min="0" step="0.01" oninput="updatePayTotal()"></div>
+          <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:.82rem;color:var(--text2)">Toplam Ödeme:</span>
+            <span id="pay-total" style="font-family:var(--mono);color:var(--accent);font-weight:600">€0.00</span>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="savePurchaseAction()">💾 Alışı Kaydet</button>
+    </div>
+    <div style="margin-top:20px" class="card"><div class="card-title">Son Alışlar</div><div id="recent-buys"></div></div>
+  </div>
+</div>
+
+<div id="page-sell" class="page">
+  <div class="page-header"><h2>Satış</h2><p>Stoktan ürün sat</p></div>
+  <div style="max-width:620px">
+    <div class="card">
+      <div id="sell-alert"></div>
+      <div class="form-group"><label>Ürün Seç (Stoktan)</label><select id="sell-item"><option value="">Stokta bekleyen ürün seç...</option></select></div>
+      <div id="sell-item-preview" style="display:none;margin-bottom:14px;padding:12px;background:var(--surface2);border-radius:8px;gap:12px;align-items:center"></div>
+      <div class="form-row cols2">
+        <div class="form-group"><label>Platform</label><select id="sell-platform"><option value="Vinted">Vinted</option><option value="Facebook">Facebook</option><option value="Tori">Tori</option><option value="Diğer">Diğer</option></select></div>
+        <div class="form-group"><label>Satış Tarihi</label><input type="date" id="sell-date"></div>
+      </div>
+      <div class="form-group"><label>Satış Fiyatı (€)</label><input type="number" id="sell-price" placeholder="0.00" min="0" step="0.01"></div>
+      <div class="form-group"><label>Ödeme Nereye Geldi</label>
+        <select id="sell-payment">
+          <option value="Nakit">💵 Nakit</option>
+          <option value="Şahsi Hesap">🏦 Şahsi Hesap</option>
+          <option value="Vinted Bakiye">🛍️ Vinted Bakiye</option>
+          <option value="Wise">💙 Wise</option>
+          <option value="Stokke Cüzdanı">💳 Stokke Cüzdanı</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Not</label><input type="text" id="sell-notes" placeholder="Opsiyonel"></div>
+      <button class="btn btn-primary btn-block" onclick="saveSaleAction()">💸 Satışı Kaydet</button>
+    </div>
+    <div style="margin-top:20px" class="card"><div class="card-title">Son Satışlar</div><div id="recent-sells"></div></div>
+  </div>
+</div>
+
+<div id="page-stats" class="page">
+  <div class="page-header"><h2>İstatistikler</h2><p>Detaylı analiz</p></div>
+  <div id="stats-content"></div>
+</div>
+
+<div id="page-savings" class="page">
+  <div class="page-header"><h2>Tasarruf & Aktif Varlık</h2><p>Şirketten çekilen para — ticari sermaye takibi</p></div>
+  <div class="grid3" style="margin-bottom:20px">
+    <div class="stat-card" style="border-color:#166534"><div class="stat-label">🏦 Toplam Tasarruf</div><div class="stat-value green" id="savings-total">€0.00</div><div class="stat-sub" id="savings-count">—</div></div>
+    <div class="stat-card" style="border-color:#1e40af"><div class="stat-label">⚡ Aktif Varlık</div><div class="stat-value blue" id="active-capital">€0.00</div><div class="stat-sub">Ticarette dönen para</div></div>
+    <div class="stat-card"><div class="stat-label">📊 Toplam Brüt Kar</div><div class="stat-value pink" id="gross-profit-sav">€0.00</div><div class="stat-sub">Tüm zamanlar</div></div>
+  </div>
+  <div style="max-width:500px">
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">Tasarrufa Para Çek</div>
+      <div id="savings-alert"></div>
+      <div class="form-row cols2">
+        <div class="form-group"><label>Tutar (€)</label><input type="number" id="sav-amount" placeholder="0.00" min="0.01" step="0.01"></div>
+        <div class="form-group"><label>Tarih</label><input type="date" id="sav-date"></div>
+      </div>
+      <div class="form-group"><label>Not</label><input type="text" id="sav-notes" placeholder="Opsiyonel"></div>
+      <button class="btn btn-primary btn-block" onclick="saveSavingAction()">🏦 Tasarrufa Çek</button>
+    </div>
+    <div class="card"><div class="card-title">Tasarruf Geçmişi</div><div id="savings-list"></div></div>
+  </div>
+</div>
+
+<div id="page-categories" class="page">
+  <div class="page-header"><h2>Kategoriler</h2><p>Kategori ve alt kategori yönetimi</p></div>
+  <div class="grid2">
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Yeni Kategori</div>
+        <div class="form-group"><label>Kategori Adı</label><input type="text" id="new-cat-name" placeholder="Örn: Koltuk"></div>
+        <button class="btn btn-primary" onclick="addCategoryAction()">+ Kategori Ekle</button>
+      </div>
+      <div class="card">
+        <div class="card-title">Yeni Alt Kategori</div>
+        <div class="form-group"><label>Üst Kategori</label><select id="new-sub-parent"><option value="">Seç...</option></select></div>
+        <div class="form-group"><label>Alt Kategori Adı</label><input type="text" id="new-sub-name" placeholder="Örn: Eski Tip"></div>
+        <button class="btn btn-primary" onclick="addSubcategoryAction()">+ Alt Kategori Ekle</button>
+      </div>
+    </div>
+    <div class="card"><div class="card-title">Mevcut Kategoriler</div><div id="cat-list"></div></div>
+  </div>
+</div>
+
+<div id="page-settings" class="page">
+  <div class="page-header"><h2>Ayarlar</h2><p>Cüzdan bakiyeleri, yedekleme ve geri yükleme</p></div>
+  <div style="max-width:700px">
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-title">💼 Başlangıç Bakiyeleri</div>
+      <p style="font-size:.83rem;color:var(--text2);margin-bottom:16px;line-height:1.5">Uygulamadan önce mevcut hesap bakiyelerinizi buraya girin. Net bakiyeye eklenir.</p>
+      <div id="wallet-opening-form"></div>
+      <button class="btn btn-primary" onclick="saveOpeningBalancesAction()" style="margin-top:12px">💾 Kaydet</button>
+      <div id="opening-alert" style="margin-top:12px"></div>
+    </div>
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-title">📦 Veri Yedekleme</div>
+      <p style="font-size:.83rem;color:var(--text2);margin-bottom:16px;line-height:1.5">Tüm verilerinizi JSON formatında indirin. Sorun yaşarsanız bu dosyayı bana verin, verileri geri yüklerim.</p>
+      <button class="btn btn-primary" onclick="exportBackupAction()">⬇️ Yedeği İndir (JSON)</button>
+      <div id="backup-info" style="margin-top:8px;font-size:.8rem;color:var(--text3)"></div>
+      <div id="backup-info2" style="margin-top:8px"></div>
+    </div>
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-title">♻️ Veri Geri Yükleme</div>
+      <p style="font-size:.83rem;color:var(--text2);margin-bottom:16px;line-height:1.5"><strong style="color:var(--warn)">Dikkat: mevcut tüm veriler silinir.</strong></p>
+      <input type="file" id="restore-file" accept=".json" style="margin-bottom:12px"><br>
+      <button class="btn btn-secondary" onclick="importBackupAction()">⬆️ Yedeği Yükle</button>
+      <div id="restore-alert" style="margin-top:12px"></div>
+    </div>
+    <div class="card" style="border-color:var(--danger)">
+      <div class="card-title" style="color:var(--danger)">⚠️ Tehlikeli Bölge</div>
+      <p style="font-size:.83rem;color:var(--text2);margin-bottom:16px">Tüm verileri sil ve sıfırla.</p>
+      <button class="btn btn-danger" onclick="resetAllDataAction()">🗑 Tüm Verileri Sil</button>
+    </div>
+  </div>
+</div>
+
+</main>
+</div>
+
+<div class="modal-overlay" id="stock-modal">
+  <div class="modal"><div class="modal-header"><h3 id="modal-title">Ürün Detayı</h3><button class="modal-close" onclick="closeModal('stock-modal')">✕</button></div><div id="modal-body"></div></div>
+</div>
+<div class="modal-overlay" id="delete-sale-modal">
+  <div class="modal" style="max-width:420px"><div class="modal-header"><h3>Satışı Sil</h3><button class="modal-close" onclick="closeModal('delete-sale-modal')">✕</button></div><div id="delete-sale-body"></div></div>
+</div>
+
+</body>
+</html>
