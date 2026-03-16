@@ -79,7 +79,7 @@ async function deleteSavingItem(id) { await fsDelete('savings', id); }
 
 async function getOpeningBalances() {
   const d = await fsGet('settings', 'openingBalances');
-  return d || {stokke:0,personal:0,vinted:0,wise:0,nakit:0};
+  return d || {stokke:0,personal:0,vinted:0,wise:0,nakit:0,savings:0};
 }
 async function saveOpeningBalancesData(data) { await fsSet('settings', 'openingBalances', data); }
 
@@ -462,15 +462,18 @@ async function renderStats(){
 // ============================================================
 async function renderSavings(){
   setLoading(true);
-  const [savings, gp] = await Promise.all([getSavings(), calcGrossProfit()]);
-  const total=savings.reduce((a,s)=>a+s.amount,0);
+  const [savings, gp, opening] = await Promise.all([getSavings(), calcGrossProfit(), getOpeningBalances()]);
+  const openingSav=opening.savings||0;
+  const total=savings.reduce((a,s)=>a+s.amount,0)+openingSav;
   const activeCapital=gp-total;
   document.getElementById('savings-total').textContent=fmt(total);
-  document.getElementById('savings-count').textContent=`${savings.length} işlem`;
+  document.getElementById('savings-count').textContent=`${savings.length} işlem` + (openingSav>0?` + başlangıç ${fmt(openingSav)}`:'');
   document.getElementById('gross-profit-sav').textContent=fmt(gp);
   const capEl=document.getElementById('active-capital');
   capEl.textContent=fmt(activeCapital);capEl.style.color=activeCapital>=0?'var(--accent2)':'var(--danger)';
   const d=document.getElementById('sav-date');if(!d.value)d.value=today();
+  const openingInput=document.getElementById('sav-opening-amount');
+  if(openingInput&&!openingInput.dataset.loaded){openingInput.value=openingSav||0;openingInput.dataset.loaded='1';}
   const el=document.getElementById('savings-list');
   const sorted=savings.sort((a,b)=>new Date(b.date)-new Date(a.date));
   el.innerHTML=sorted.length?`<table><thead><tr><th>Tarih</th><th>Tutar</th><th>Not</th><th></th></tr></thead><tbody>${sorted.map(s=>`<tr><td>${s.date}</td><td style="font-family:var(--mono);color:var(--accent)">${fmt(s.amount)}</td><td style="color:var(--text2)">${s.notes||'—'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteSavingAction('${s.id}')">✕</button></td></tr>`).join('')}</tbody></table>`:'<div class="empty"><p>Henüz tasarruf yok</p></div>';
@@ -479,14 +482,15 @@ async function renderSavings(){
 
 async function saveSavingAction(){
   const amount=parseFloat(document.getElementById('sav-amount').value);if(!amount||amount<=0){showAlert('savings-alert','Geçerli tutar girin!','error');return}
-  const [gp, savings] = await Promise.all([calcGrossProfit(), getSavings()]);
-  const alreadySaved=savings.reduce((a,s)=>a+s.amount,0);
+  const [gp, savings, opening] = await Promise.all([calcGrossProfit(), getSavings(), getOpeningBalances()]);
+  const openingSav=opening.savings||0;
+  const alreadySaved=savings.reduce((a,s)=>a+s.amount,0)+openingSav;
   if(alreadySaved+amount>gp){showAlert('savings-alert',`Brüt kardan fazla çekilemez! Mevcut kar: ${fmt(gp)}, zaten çekilen: ${fmt(alreadySaved)}`,'error');return}
   const s={id:uid(),amount,date:document.getElementById('sav-date').value||today(),notes:document.getElementById('sav-notes').value};
   setLoading(true);
   await saveSavingItem(s);
   document.getElementById('sav-amount').value='';document.getElementById('sav-notes').value='';
-  showAlert('savings-alert',`✓ ${fmt(amount)} tasarrufa çekildi! Kalan: ${fmt(gp-alreadySaved-amount)}`,'success');
+  showAlert('savings-alert',`✓ ${fmt(amount)} tasarrufa çekildi! Kalan Aktif Varlık: ${fmt(gp-alreadySaved-amount)}`,'success');
   await renderSavings();
   setLoading(false);
 }
@@ -494,6 +498,17 @@ async function saveSavingAction(){
 async function deleteSavingAction(id){
   setLoading(true);
   await deleteSavingItem(id);
+  await renderSavings();
+  setLoading(false);
+}
+
+async function saveSavingsOpeningAction(){
+  const amount=parseFloat(document.getElementById('sav-opening-amount')?.value)||0;
+  const opening=await getOpeningBalances();
+  opening.savings=amount;
+  setLoading(true);
+  await saveOpeningBalancesData(opening);
+  showAlert('sav-opening-alert',`✓ Başlangıç tasarrufu ${fmt(amount)} olarak kaydedildi.`,'success');
   await renderSavings();
   setLoading(false);
 }
@@ -542,6 +557,7 @@ async function renderSettings(){
   document.getElementById('wallet-opening-form').innerHTML=`
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
       ${WALLETS.map(w=>`<div><label style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span>${w.icon}</span>${w.label}</label><input type="number" id="opening-${w.id}" value="${opening[w.id]||0}" min="0" step="0.01" placeholder="0.00"></div>`).join('')}
+      <div><label style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span>🏦</span>Başlangıç Tasarrufu</label><input type="number" id="opening-savings" value="${opening.savings||0}" min="0" step="0.01" placeholder="0.00"></div>
     </div>`;
   document.getElementById('backup-info').textContent=`${purchases.length} alış, ${sales.length} satış, ${savings.length} tasarruf kaydı mevcut.`;
 }
@@ -549,6 +565,7 @@ async function renderSettings(){
 async function saveOpeningBalancesAction(){
   const balances={};
   WALLETS.forEach(w=>{balances[w.id]=parseFloat(document.getElementById('opening-'+w.id)?.value)||0});
+  balances.savings=parseFloat(document.getElementById('opening-savings')?.value)||0;
   setLoading(true);
   await saveOpeningBalancesData(balances);
   showAlert('opening-alert','✓ Başlangıç bakiyeleri kaydedildi!','success');
@@ -629,6 +646,7 @@ window.confirmDeleteSale=confirmDeleteSale;
 window.deleteSaleConfirmed=deleteSaleConfirmed;
 window.saveSavingAction=saveSavingAction;
 window.deleteSavingAction=deleteSavingAction;
+window.saveSavingsOpeningAction=saveSavingsOpeningAction;
 window.addCategoryAction=addCategoryAction;
 window.deleteCategoryAction=deleteCategoryAction;
 window.addSubcategoryAction=addSubcategoryAction;
@@ -930,6 +948,15 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--surface2)}
     <div class="stat-card"><div class="stat-label">📊 Toplam Brüt Kar</div><div class="stat-value pink" id="gross-profit-sav">€0.00</div><div class="stat-sub">Tüm zamanlar</div></div>
   </div>
   <div style="max-width:500px">
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">🏁 Başlangıç Tasarrufu</div>
+      <p style="font-size:.82rem;color:var(--text2);margin-bottom:12px">Uygulamadan önce biriktirdiğin tasarruf miktarı. Toplam tasarrufa eklenir.</p>
+      <div id="sav-opening-alert"></div>
+      <div style="display:flex;gap:10px;align-items:flex-end">
+        <div style="flex:1"><label>Başlangıç Tutarı (€)</label><input type="number" id="sav-opening-amount" placeholder="0.00" min="0" step="0.01"></div>
+        <button class="btn btn-secondary" onclick="saveSavingsOpeningAction()" style="white-space:nowrap">💾 Kaydet</button>
+      </div>
+    </div>
     <div class="card" style="margin-bottom:16px">
       <div class="card-title">Tasarrufa Para Çek</div>
       <div id="savings-alert"></div>
