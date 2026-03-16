@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>StokTakip</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4ade80">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="StokTakip">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <!-- Firebase -->
@@ -652,6 +658,13 @@ window.setBottomNav=setBottomNav;
 window.toggleMoreMenu=toggleMoreMenu;
 
 navigate('dashboard');
+
+// Register Service Worker
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('/stoktakip/sw.js').catch(e=>console.log('SW:', e));
+  });
+}
 </script>
 <style>
 :root{--bg:#0f1117;--surface:#181b24;--surface2:#1e2230;--border:#2a2f3e;--accent:#4ade80;--accent2:#60a5fa;--accent3:#f472b6;--warn:#fb923c;--danger:#f87171;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif}
