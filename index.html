@@ -633,6 +633,24 @@ window.importBackupAction=importBackupAction;
 window.resetAllDataAction=resetAllDataAction;
 window.closeModal=closeModal;
 
+function setBottomNav(page){
+  document.querySelectorAll('.bottom-nav-item').forEach(b=>b.classList.remove('active'));
+  const el=document.getElementById('bn-'+page);
+  if(el)el.classList.add('active');
+  else{const m=document.getElementById('bn-more');if(m)m.classList.add('active');}
+}
+function toggleMoreMenu(){
+  const m=document.getElementById('bottom-nav-more');
+  if(m)m.classList.toggle('open');
+}
+document.addEventListener('click',e=>{
+  const m=document.getElementById('bottom-nav-more');
+  const btn=document.getElementById('bn-more');
+  if(m&&btn&&!m.contains(e.target)&&!btn.contains(e.target))m.classList.remove('open');
+});
+window.setBottomNav=setBottomNav;
+window.toggleMoreMenu=toggleMoreMenu;
+
 navigate('dashboard');
 </script>
 <style>
@@ -726,7 +744,30 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--surface2)}
 @keyframes spin{to{transform:rotate(360deg)}}
 #global-loader p{color:var(--text2);font-size:.85rem;font-family:var(--mono)}
 ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-@media(max-width:768px){.sidebar{width:60px}.sidebar-logo,.nav-item span,.nav-section{display:none}.main{margin-left:60px;padding:16px;max-width:calc(100vw - 60px)}.grid4{grid-template-columns:1fr 1fr}.grid2{grid-template-columns:1fr}.grid3{grid-template-columns:1fr}}
+/* BOTTOM NAV - mobile only */
+.bottom-nav{display:none}
+@media(max-width:768px){
+  .sidebar{display:none}
+  .main{margin-left:0;padding:16px 12px 80px 12px;max-width:100vw;width:100%}
+  .grid4{grid-template-columns:1fr 1fr}
+  .grid2{grid-template-columns:1fr}
+  .grid3{grid-template-columns:1fr}
+  .form-row.cols2{grid-template-columns:1fr}
+  .payment-split .split-row{grid-template-columns:1fr 100px}
+  .tabs{width:100%;overflow-x:auto}
+  table{font-size:.78rem}
+  th,td{padding:7px 8px}
+  .stock-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
+  .modal{padding:16px;margin:8px}
+  .bottom-nav{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);z-index:100;height:60px}
+  .bottom-nav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;color:var(--text3);font-size:.6rem;padding:6px 2px;border:none;background:none;transition:color .15s}
+  .bottom-nav-item.active{color:var(--accent)}
+  .bottom-nav-item .bn-icon{font-size:1.3rem;line-height:1}
+  .bottom-nav-more{position:fixed;bottom:60px;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);z-index:99;padding:12px;display:none;flex-wrap:wrap;gap:8px}
+  .bottom-nav-more.open{display:flex}
+  .bn-more-item{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface2);border-radius:8px;cursor:pointer;color:var(--text2);font-size:.85rem;border:none;width:calc(50% - 4px)}
+  .bn-more-item.active{color:var(--accent)}
+}
 </style>
 </head>
 <body>
@@ -750,6 +791,22 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--surface2)}
   <div class="nav-item" onclick="navigate('categories')"><span class="icon">🗂️</span><span>Kategoriler</span></div>
   <div class="nav-item" onclick="navigate('settings')"><span class="icon">⚙️</span><span>Ayarlar</span></div>
 </aside>
+
+<!-- MOBILE BOTTOM NAV -->
+<div class="bottom-nav" id="bottom-nav">
+  <button class="bottom-nav-item active" id="bn-dashboard" onclick="navigate('dashboard');setBottomNav('dashboard')"><span class="bn-icon">📊</span><span>Özet</span></button>
+  <button class="bottom-nav-item" id="bn-stock" onclick="navigate('stock');setBottomNav('stock')"><span class="bn-icon">📦</span><span>Stok</span></button>
+  <button class="bottom-nav-item" id="bn-buy" onclick="navigate('buy');setBottomNav('buy')"><span class="bn-icon">🛒</span><span>Alış</span></button>
+  <button class="bottom-nav-item" id="bn-sell" onclick="navigate('sell');setBottomNav('sell')"><span class="bn-icon">💸</span><span>Satış</span></button>
+  <button class="bottom-nav-item" id="bn-more" onclick="toggleMoreMenu()"><span class="bn-icon">☰</span><span>Daha</span></button>
+</div>
+<div class="bottom-nav-more" id="bottom-nav-more">
+  <button class="bn-more-item" onclick="navigate('stats');setBottomNav('stats');toggleMoreMenu()"><span>📈</span> İstatistikler</button>
+  <button class="bn-more-item" onclick="navigate('savings');setBottomNav('savings');toggleMoreMenu()"><span>🏦</span> Tasarruf</button>
+  <button class="bn-more-item" onclick="navigate('categories');setBottomNav('categories');toggleMoreMenu()"><span>🗂️</span> Kategoriler</button>
+  <button class="bn-more-item" onclick="navigate('settings');setBottomNav('settings');toggleMoreMenu()"><span>⚙️</span> Ayarlar</button>
+</div>
+
 <main class="main">
 
 <div id="page-dashboard" class="page active">
