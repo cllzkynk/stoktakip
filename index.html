@@ -189,7 +189,9 @@ async function renderDashboard(){
   const gp=sales.reduce((a,s)=>{const p=purchases.find(x=>x.id===s.itemId);return a+(s.price-(p?totalPay(p):0))},0);
   const opening2=await getOpeningBalances();
   const openingWallets2=(opening2.stokke||0)+(opening2.personal||0)+(opening2.vinted||0)+(opening2.wise||0)+(opening2.nakit||0);
-  const totalSav=savings.reduce((a,s)=>a+s.amount,0)+(opening2.savings||0),activeCap=openingWallets2+gp-totalSav;
+  const subsequentSav2=savings.reduce((a,s)=>a+s.amount,0);
+  const totalSav=subsequentSav2+(opening2.savings||0);
+  const activeCap=openingWallets2+gp-subsequentSav2;
   document.getElementById('dash-stats').innerHTML=`
     <div class="stat-card"><div class="stat-label">Toplam Gelir</div><div class="stat-value green">${fmt(rev)}</div><div class="stat-sub">${fS.length} satış</div></div>
     <div class="stat-card"><div class="stat-label">Toplam Masraf</div><div class="stat-value blue">${fmt(spent)}</div><div class="stat-sub">${fB.length} alış</div></div>
@@ -467,8 +469,9 @@ async function renderSavings(){
   const [savings, gp, opening] = await Promise.all([getSavings(), calcGrossProfit(), getOpeningBalances()]);
   const openingSav=opening.savings||0;
   const openingWallets=(opening.stokke||0)+(opening.personal||0)+(opening.vinted||0)+(opening.wise||0)+(opening.nakit||0);
-  const total=savings.reduce((a,s)=>a+s.amount,0)+openingSav;
-  const activeCapital=openingWallets+gp-total;
+  const subsequentSavings=savings.reduce((a,s)=>a+s.amount,0);
+  const total=subsequentSavings+openingSav;
+  const activeCapital=openingWallets+gp-subsequentSavings;
   document.getElementById('savings-total').textContent=fmt(total);
   document.getElementById('savings-count').textContent=`${savings.length} işlem` + (openingSav>0?` + başlangıç ${fmt(openingSav)}`:'');
   document.getElementById('gross-profit-sav').textContent=fmt(gp);
@@ -488,7 +491,7 @@ async function saveSavingAction(){
   const [gp, savings, opening] = await Promise.all([calcGrossProfit(), getSavings(), getOpeningBalances()]);
   const openingSav=opening.savings||0;
   const openingWallets=(opening.stokke||0)+(opening.personal||0)+(opening.vinted||0)+(opening.wise||0)+(opening.nakit||0);
-  const alreadySaved=savings.reduce((a,s)=>a+s.amount,0)+openingSav;
+  const alreadySaved=savings.reduce((a,s)=>a+s.amount,0);
   const maxWithdrawable=openingWallets+gp;
   if(alreadySaved+amount>maxWithdrawable){showAlert('savings-alert',`Çekilebilir maksimum aşıldı! Maks: ${fmt(maxWithdrawable)}, zaten çekilen: ${fmt(alreadySaved)}`,'error');return}
   const s={id:uid(),amount,date:document.getElementById('sav-date').value||today(),notes:document.getElementById('sav-notes').value};
