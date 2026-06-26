@@ -3,17 +3,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import InventoryTab from '@/components/app/InventoryTab';
 import StatisticsTab from '@/components/app/StatisticsTab';
 import CategoriesTab from '@/components/app/CategoriesTab';
 import SettingsTab from '@/components/app/SettingsTab';
 import ExpensesTab from '@/components/app/ExpensesTab';
 import SalesHistoryTab from '@/components/app/SalesHistoryTab';
-import { Package, BarChart3, FolderOpen, Settings, Banknote, History } from 'lucide-react';
+import { Package, BarChart3, FolderOpen, Settings, Banknote, History, ArrowUp, ArrowDown } from 'lucide-react';
 
 export default function StockTrackerApp() {
   const [activeTab, setActiveTab] = useState('inventory');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showScrollButtons, setShowScrollButtons] = useState(false);
   const [stats, setStats] = useState<{
     inStockCount: number;
     listedCount: number;
@@ -40,10 +42,27 @@ export default function StockTrackerApp() {
       .catch(() => {});
   }, [refreshKey]);
 
+  // Scroll visibility detection
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollButtons(window.scrollY > 200);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const scrollToBottom = () => {
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-lg border-b border-slate-200 shadow-sm">
+      <header id="page-top" className="sticky top-0 z-50 bg-white/80 backdrop-blur-lg border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-200">
@@ -123,6 +142,28 @@ export default function StockTrackerApp() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Scroll Buttons - Desktop: fixed right side, Mobile: above bottom nav */}
+      {showScrollButtons && (
+        <div className="fixed z-40 sm:right-6 sm:bottom-6 right-3 bottom-16 sm:bottom-6 flex flex-col gap-2">
+          <Button
+            size="icon"
+            className="w-10 h-10 rounded-full bg-white/90 shadow-lg border border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-300 transition-all"
+            onClick={scrollToTop}
+            title="Yukarı git"
+          >
+            <ArrowUp className="w-4 h-4" />
+          </Button>
+          <Button
+            size="icon"
+            className="w-10 h-10 rounded-full bg-white/90 shadow-lg border border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-300 transition-all"
+            onClick={scrollToBottom}
+            title="Aşağı git"
+          >
+            <ArrowDown className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
 
       {/* Mobile Bottom Navigation */}
       <nav className="sm:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-slate-200 z-50 safe-area-bottom">
