@@ -23,7 +23,7 @@ model PaymentMethod {
   id                String           @id @default(cuid())
   name              String
   isDefault         Boolean          @default(false)
-  initialBalance    Double           @default(0)
+  initialBalance    Float           @default(0)
   purchaseProducts  Product[]        @relation("ProductPurchasePayment")
   sales             Sale[]           @relation("SalePayment")
   expenses          Expense[]
@@ -46,7 +46,7 @@ model Product {
   description       String?
   categoryId        String?
   category          Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  purchasePrice     Double
+  purchasePrice     Float
   purchaseDate      DateTime
   color             String?
   model             String?
@@ -69,7 +69,7 @@ model Sale {
   id               String        @id @default(cuid())
   productId        String        @unique
   product          Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
-  salePrice        Double
+  salePrice        Float
   saleDate         DateTime
   salesChannelId   String
   salesChannel     SalesChannel  @relation(fields: [salesChannelId], references: [id])
@@ -83,7 +83,7 @@ model Sale {
 
 model Expense {
   id              String        @id @default(cuid())
-  amount          Double
+  amount          Float
   description     String
   date            DateTime
   paymentMethodId String
@@ -97,7 +97,7 @@ model ProductExpense {
   id          String   @id @default(cuid())
   productId   String
   product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  amount      Double
+  amount      Float
   description String
   date        DateTime
   createdAt   DateTime @default(now())
