@@ -17,7 +17,10 @@ import { useToast } from '@/hooks/use-toast';
 interface Category { id: string; name: string; parentId: string | null; children: Category[]; }
 interface PaymentMethod { id: string; name: string; }
 interface Sale { id: string; salePrice: number; saleDate: string; salesChannelId: string; salePaymentId: string; buyerInfo?: string; notes?: string; salesChannel: { id: string; name: string }; salePayment: { id: string; name: string }; }
-interface Product { id: string; productNumber: number; name: string; description?: string; categoryId?: string; category?: Category; purchasePrice: number; purchaseDate: string; color?: string; model?: string; size?: string; condition?: string; imageUrl?: string; isListed: boolean; listedDate?: string; status: string; purchasePaymentId: string; purchasePayment: PaymentMethod; sale?: Sale; expenses: { id: string; amount: number; description: string; date: string }[]; }
+interface Product { id: string; productNumber: number; name: string; description?: string; categoryId?: string; category?: Category; purchasePrice: number; purchaseDate: string; color?: string; model?: string; size?: string; condition?: string; imageUrl?: string; imageData?: string; isListed: boolean; listedDate?: string; status: string; purchasePaymentId: string; purchasePayment: PaymentMethod; sale?: Sale; expenses: { id: string; amount: number; description: string; date: string }[]; }
+
+// Get product image src - prefers imageData (base64 in DB), falls back to imageUrl (file path)
+const getProductImage = (product: Product) => product.imageData || product.imageUrl || null;
 
 interface Props {
   refreshKey: number;
@@ -184,7 +187,7 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
       condition: product.condition || '',
       purchasePaymentId: product.purchasePaymentId,
     });
-    setImagePreview(product.imageUrl || null);
+    setImagePreview(getProductImage(product));
     setShowEditDialog(true);
   };
 
@@ -307,8 +310,8 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
           {products.map(product => (
             <Card key={product.id} className="group hover:shadow-lg transition-all duration-200 border-slate-200 overflow-hidden">
               <div className="relative">
-                {product.imageUrl ? (
-                  <img src={product.imageUrl} alt={product.name} className="w-full h-44 object-cover" />
+                {getProductImage(product) ? (
+                  <img src={getProductImage(product)!} alt={product.name} className="w-full h-44 object-cover" />
                 ) : (
                   <div className="w-full h-44 bg-gradient-to-br from-slate-100 to-slate-50 flex items-center justify-center">
                     <Package className="w-12 h-12 text-slate-300" />
@@ -416,8 +419,8 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
           <DialogHeader><DialogTitle>Ürün Detayı</DialogTitle></DialogHeader>
           {selectedProduct && (
             <div className="space-y-4">
-              {selectedProduct.imageUrl && (
-                <img src={selectedProduct.imageUrl} alt={selectedProduct.name} className="w-full max-h-64 object-contain rounded-lg border" />
+              {getProductImage(selectedProduct) && (
+                <img src={getProductImage(selectedProduct)!} alt={selectedProduct.name} className="w-full max-h-64 object-contain rounded-lg border" />
               )}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-slate-500">ID:</span> <span className="font-mono">#{selectedProduct.productNumber}</span></div>

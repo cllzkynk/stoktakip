@@ -1,7 +1,5 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
 
 export async function GET(req: NextRequest) {
   try {
@@ -50,6 +48,15 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// Helper: convert File to base64 data URI
+async function fileToBase64(file: File): Promise<string> {
+  const bytes = await file.arrayBuffer();
+  const buffer = Buffer.from(bytes);
+  const base64 = buffer.toString('base64');
+  const mimeType = file.type || 'image/jpeg';
+  return `data:${mimeType};base64,${base64}`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -76,17 +83,13 @@ export async function POST(req: NextRequest) {
     });
     const productNumber = (lastProduct?.productNumber || 0) + 1;
 
-    let imageUrl: string | null = null;
+    let imageData: string | null = null;
     if (imageFile && imageFile.size > 0) {
-      const bytes = await imageFile.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      const ext = imageFile.name.split('.').pop() || 'jpg';
-      const fileName = `product-${productNumber}-${Date.now()}.${ext}`;
-      const uploadDir = path.join(process.cwd(), 'public', 'uploads');
-
-      await mkdir(uploadDir, { recursive: true });
-      await writeFile(path.join(uploadDir, fileName), buffer);
-      imageUrl = `/uploads/${fileName}`;
+      // Limit image size to 2MB
+      if (imageFile.size > 2 * 1024 * 1024) {
+        return NextResponse.json({ error: 'Resim boyutu 2MB\'dan küçük olmalı' }, { status: 400 });
+      }
+      imageData = await fileToBase64(imageFile);
     }
 
     const product = await db.product.create({
@@ -101,7 +104,7 @@ export async function POST(req: NextRequest) {
         model: model?.trim() || null,
         size: size?.trim() || null,
         condition: condition?.trim() || null,
-        imageUrl,
+        imageData,
         purchasePaymentId,
         status: 'in_stock',
       },
@@ -146,19 +149,6 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Ürün bulunamadı' }, { status: 404 });
     }
 
-    let imageUrl = existing.imageUrl;
-    if (imageFile && imageFile.size > 0) {
-      const bytes = await imageFile.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      const ext = imageFile.name.split('.').pop() || 'jpg';
-      const fileName = `product-${existing.productNumber}-${Date.now()}.${ext}`;
-      const uploadDir = path.join(process.cwd(), 'public', 'uploads');
-
-      await mkdir(uploadDir, { recursive: true });
-      await writeFile(path.join(uploadDir, fileName), buffer);
-      imageUrl = `/uploads/${fileName}`;
-    }
-
     const updateData: Record<string, unknown> = {};
     if (name !== null) updateData.name = name.trim();
     if (description !== null) updateData.description = description?.trim() || null;
@@ -181,7 +171,14 @@ export async function PUT(req: NextRequest) {
     }
     if (status !== null) updateData.status = status;
     if (purchasePaymentId) updateData.purchasePaymentId = purchasePaymentId;
-    updateData.imageUrl = imageUrl;
+
+    // Handle image update
+    if (imageFile && imageFile.size > 0) {
+      if (imageFile.size > 2 * 1024 * 1024) {
+        return NextResponse.json({ error: 'Resim boyutu 2MB\'dan küçük olmalı' }, { status: 400 });
+      }
+      updateData.imageData = await fileToBase64(imageFile);
+    }
 
     const product = await db.product.update({
       where: { id },

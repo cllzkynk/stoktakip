@@ -52,3 +52,9 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Database (user data - not for version control)
+/db/
+
+# Uploaded images (now stored in DB, but keep for safety)
+/public/uploads/

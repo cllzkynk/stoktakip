@@ -51,7 +51,8 @@ model Product {
   model             String?
   size              String?
   condition         String?
-  imageUrl          String?
+  imageUrl          String?  // legacy file path, no longer used for new uploads
+  imageData         String?  // base64 encoded image stored directly in DB
   isListed          Boolean         @default(false)
   listedDate        DateTime?
   status            String          @default("in_stock") // in_stock, listed, sold

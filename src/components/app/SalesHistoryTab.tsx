@@ -19,7 +19,7 @@ interface Sale {
   salePaymentId: string;
   buyerInfo?: string;
   notes?: string;
-  product: { id: string; productNumber: number; name: string; purchasePrice: number; color?: string; model?: string; imageUrl?: string; category?: { name: string } };
+  product: { id: string; productNumber: number; name: string; purchasePrice: number; color?: string; model?: string; imageUrl?: string; imageData?: string; category?: { name: string } };
   salesChannel: { id: string; name: string };
   salePayment: { id: string; name: string };
 }
@@ -126,8 +126,8 @@ export default function SalesHistoryTab({ refreshKey, onRefresh }: Props) {
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
                     <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                      {sale.product.imageUrl ? (
-                        <img src={sale.product.imageUrl} alt="" className="w-full h-full object-cover" />
+                      {(sale.product.imageData || sale.product.imageUrl) ? (
+                        <img src={sale.product.imageData || sale.product.imageUrl || ''} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <Package className="w-6 h-6 text-slate-400" />
                       )}
