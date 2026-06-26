@@ -13,6 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Plus, Search, Eye, Megaphone, ShoppingBag, Edit, Trash2, Image as ImageIcon, Package } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { compressImage, getBase64SizeKB } from '@/lib/image-compress';
 
 interface Category { id: string; name: string; parentId: string | null; children: Category[]; }
 interface PaymentMethod { id: string; name: string; }
@@ -20,7 +21,17 @@ interface Sale { id: string; salePrice: number; saleDate: string; salesChannelId
 interface Product { id: string; productNumber: number; name: string; description?: string; categoryId?: string; category?: Category; purchasePrice: number; purchaseDate: string; color?: string; model?: string; size?: string; condition?: string; imageUrl?: string; imageData?: string; isListed: boolean; listedDate?: string; status: string; purchasePaymentId: string; purchasePayment: PaymentMethod; sale?: Sale; expenses: { id: string; amount: number; description: string; date: string }[]; }
 
 // Get product image src - prefers imageData (base64 in DB), falls back to imageUrl (file path)
+// For sold products older than 7 days, shows reduced quality indicator
 const getProductImage = (product: Product) => product.imageData || product.imageUrl || null;
+
+// Check if a sold product's image should be displayed in low quality (7+ days since sale)
+const isOldSoldProduct = (product: Product): boolean => {
+  if (product.status !== 'sold' || !product.sale) return false;
+  const saleDate = new Date(product.sale.saleDate);
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  return saleDate < sevenDaysAgo;
+};
 
 interface Props {
   refreshKey: number;
@@ -41,7 +52,8 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [compressedImage, setCompressedImage] = useState<string | null>(null);
+  const [imageSize, setImageSize] = useState<number>(0);
 
   // Sale form
   const [saleForm, setSaleForm] = useState({ salePrice: '', saleDate: new Date().toISOString().split('T')[0], salesChannelId: '', salePaymentId: '', buyerInfo: '', notes: '' });
@@ -75,20 +87,14 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const formData = new FormData();
-      formData.append('name', productForm.name);
-      formData.append('description', productForm.description);
-      formData.append('categoryId', productForm.categoryId);
-      formData.append('purchasePrice', productForm.purchasePrice);
-      formData.append('purchaseDate', productForm.purchaseDate);
-      formData.append('color', productForm.color);
-      formData.append('model', productForm.model);
-      formData.append('size', productForm.size);
-      formData.append('condition', productForm.condition);
-      formData.append('purchasePaymentId', productForm.purchasePaymentId);
-      if (selectedImage) formData.append('image', selectedImage);
-
-      const res = await fetch('/api/products', { method: 'POST', body: formData });
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...productForm,
+          imageData: compressedImage,
+        }),
+      });
       if (!res.ok) throw new Error();
       toast({ title: 'Başarılı', description: 'Ürün eklendi' });
       setShowAddDialog(false);
@@ -101,21 +107,24 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
     e.preventDefault();
     if (!selectedProduct) return;
     try {
-      const formData = new FormData();
-      formData.append('id', selectedProduct.id);
-      formData.append('name', productForm.name);
-      formData.append('description', productForm.description);
-      formData.append('categoryId', productForm.categoryId);
-      formData.append('purchasePrice', productForm.purchasePrice);
-      formData.append('purchaseDate', productForm.purchaseDate);
-      formData.append('color', productForm.color);
-      formData.append('model', productForm.model);
-      formData.append('size', productForm.size);
-      formData.append('condition', productForm.condition);
-      formData.append('purchasePaymentId', productForm.purchasePaymentId);
-      if (selectedImage) formData.append('image', selectedImage);
-
-      const res = await fetch('/api/products', { method: 'PUT', body: formData });
+      const res = await fetch('/api/products', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedProduct.id,
+          name: productForm.name,
+          description: productForm.description,
+          categoryId: productForm.categoryId,
+          purchasePrice: productForm.purchasePrice,
+          purchaseDate: productForm.purchaseDate,
+          color: productForm.color,
+          model: productForm.model,
+          size: productForm.size,
+          condition: productForm.condition,
+          purchasePaymentId: productForm.purchasePaymentId,
+          imageData: compressedImage, // null if not changed, new base64 if changed
+        }),
+      });
       if (!res.ok) throw new Error();
       toast({ title: 'Başarılı', description: 'Ürün güncellendi' });
       setShowEditDialog(false);
@@ -169,7 +178,8 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
 
   const resetProductForm = () => {
     setProductForm({ name: '', description: '', categoryId: '', purchasePrice: '', purchaseDate: new Date().toISOString().split('T')[0], color: '', model: '', size: '', condition: '', purchasePaymentId: '' });
-    setSelectedImage(null);
+    setCompressedImage(null);
+    setImageSize(0);
     setImagePreview(null);
   };
 
@@ -188,6 +198,8 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
       purchasePaymentId: product.purchasePaymentId,
     });
     setImagePreview(getProductImage(product));
+    setCompressedImage(null); // will be set if user picks a new image
+    setImageSize(0);
     setShowEditDialog(true);
   };
 
@@ -278,12 +290,26 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
                   <label className="flex items-center gap-2 cursor-pointer px-4 py-2 border-2 border-dashed border-slate-300 rounded-lg hover:border-emerald-400 transition-colors">
                     <ImageIcon className="w-4 h-4 text-slate-400" />
                     <span className="text-sm text-slate-500">Resim Seç</span>
-                    <input type="file" accept="image/*" className="hidden" onChange={e => {
+                    <input type="file" accept="image/*" className="hidden" onChange={async e => {
                       const f = e.target.files?.[0];
-                      if (f) { setSelectedImage(f); setImagePreview(URL.createObjectURL(f)); }
+                      if (f) {
+                        try {
+                          const compressed = await compressImage(f, { maxWidth: 600, maxHeight: 600, quality: 0.5 });
+                          setCompressedImage(compressed);
+                          setImagePreview(compressed);
+                          setImageSize(getBase64SizeKB(compressed));
+                        } catch {
+                          toast({ title: 'Hata', description: 'Resim sıkıştırılamadı', variant: 'destructive' });
+                        }
+                      }
                     }} />
                   </label>
-                  {imagePreview && <img src={imagePreview} alt="Preview" className="w-16 h-16 object-cover rounded-lg border" />}
+                  {imagePreview && (
+                    <div className="flex items-center gap-2">
+                      <img src={imagePreview} alt="Preview" className="w-16 h-16 object-cover rounded-lg border" />
+                      {imageSize > 0 && <span className="text-[10px] text-emerald-600 font-medium">{imageSize} KB</span>}
+                    </div>
+                  )}
                 </div>
               </div>
               <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">Ürünü Ekle</Button>
@@ -311,10 +337,19 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
             <Card key={product.id} className="group hover:shadow-lg transition-all duration-200 border-slate-200 overflow-hidden">
               <div className="relative">
                 {getProductImage(product) ? (
-                  <img src={getProductImage(product)!} alt={product.name} className="w-full h-44 object-cover" />
+                  <img
+                    src={getProductImage(product)!}
+                    alt={product.name}
+                    className={`w-full h-44 object-cover ${isOldSoldProduct(product) ? 'blur-[1px] opacity-70' : ''}`}
+                  />
                 ) : (
                   <div className="w-full h-44 bg-gradient-to-br from-slate-100 to-slate-50 flex items-center justify-center">
                     <Package className="w-12 h-12 text-slate-300" />
+                  </div>
+                )}
+                {isOldSoldProduct(product) && (
+                  <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">
+                    Arşiv kalite
                   </div>
                 )}
                 <div className="absolute top-2 left-2">{getStatusBadge(product)}</div>
@@ -516,12 +551,26 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
                 <label className="flex items-center gap-2 cursor-pointer px-4 py-2 border-2 border-dashed border-slate-300 rounded-lg hover:border-emerald-400 transition-colors">
                   <ImageIcon className="w-4 h-4 text-slate-400" />
                   <span className="text-sm text-slate-500">Değiştir</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={e => {
+                  <input type="file" accept="image/*" className="hidden" onChange={async e => {
                     const f = e.target.files?.[0];
-                    if (f) { setSelectedImage(f); setImagePreview(URL.createObjectURL(f)); }
+                    if (f) {
+                      try {
+                        const compressed = await compressImage(f, { maxWidth: 600, maxHeight: 600, quality: 0.5 });
+                        setCompressedImage(compressed);
+                        setImagePreview(compressed);
+                        setImageSize(getBase64SizeKB(compressed));
+                      } catch {
+                        toast({ title: 'Hata', description: 'Resim sıkıştırılamadı', variant: 'destructive' });
+                      }
+                    }
                   }} />
                 </label>
-                {imagePreview && <img src={imagePreview} alt="Preview" className="w-16 h-16 object-cover rounded-lg border" />}
+                {imagePreview && (
+                  <div className="flex items-center gap-2">
+                    <img src={imagePreview} alt="Preview" className="w-16 h-16 object-cover rounded-lg border" />
+                    {imageSize > 0 && <span className="text-[10px] text-emerald-600 font-medium">{imageSize} KB</span>}
+                  </div>
+                )}
               </div>
             </div>
             <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">Güncelle</Button>

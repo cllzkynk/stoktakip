@@ -48,31 +48,12 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// Helper: convert File to base64 data URI
-async function fileToBase64(file: File): Promise<string> {
-  const bytes = await file.arrayBuffer();
-  const buffer = Buffer.from(bytes);
-  const base64 = buffer.toString('base64');
-  const mimeType = file.type || 'image/jpeg';
-  return `data:${mimeType};base64,${base64}`;
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const formData = await req.formData();
-    const name = formData.get('name') as string;
-    const description = formData.get('description') as string;
-    const categoryId = formData.get('categoryId') as string;
-    const purchasePrice = parseFloat(formData.get('purchasePrice') as string);
-    const purchaseDate = new Date(formData.get('purchaseDate') as string);
-    const color = formData.get('color') as string;
-    const model = formData.get('model') as string;
-    const size = formData.get('size') as string;
-    const condition = formData.get('condition') as string;
-    const purchasePaymentId = formData.get('purchasePaymentId') as string;
-    const imageFile = formData.get('image') as File | null;
+    const body = await req.json();
+    const { name, description, categoryId, purchasePrice, purchaseDate, color, model, size, condition, purchasePaymentId, imageData } = body;
 
-    if (!name || isNaN(purchasePrice) || !purchasePaymentId) {
+    if (!name || !purchasePrice || !purchasePaymentId) {
       return NextResponse.json({ error: 'Zorunlu alanlar eksik' }, { status: 400 });
     }
 
@@ -83,28 +64,19 @@ export async function POST(req: NextRequest) {
     });
     const productNumber = (lastProduct?.productNumber || 0) + 1;
 
-    let imageData: string | null = null;
-    if (imageFile && imageFile.size > 0) {
-      // Limit image size to 2MB
-      if (imageFile.size > 2 * 1024 * 1024) {
-        return NextResponse.json({ error: 'Resim boyutu 2MB\'dan küçük olmalı' }, { status: 400 });
-      }
-      imageData = await fileToBase64(imageFile);
-    }
-
     const product = await db.product.create({
       data: {
         productNumber,
         name: name.trim(),
         description: description?.trim() || null,
         categoryId: categoryId || null,
-        purchasePrice,
-        purchaseDate,
+        purchasePrice: parseFloat(purchasePrice),
+        purchaseDate: new Date(purchaseDate),
         color: color?.trim() || null,
         model: model?.trim() || null,
         size: size?.trim() || null,
         condition: condition?.trim() || null,
-        imageData,
+        imageData: imageData || null,
         purchasePaymentId,
         status: 'in_stock',
       },
@@ -124,21 +96,8 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const formData = await req.formData();
-    const id = formData.get('id') as string;
-    const name = formData.get('name') as string;
-    const description = formData.get('description') as string;
-    const categoryId = formData.get('categoryId') as string;
-    const purchasePrice = parseFloat(formData.get('purchasePrice') as string);
-    const purchaseDate = formData.get('purchaseDate') as string;
-    const color = formData.get('color') as string;
-    const model = formData.get('model') as string;
-    const size = formData.get('size') as string;
-    const condition = formData.get('condition') as string;
-    const isListed = formData.get('isListed') as string;
-    const status = formData.get('status') as string;
-    const purchasePaymentId = formData.get('purchasePaymentId') as string;
-    const imageFile = formData.get('image') as File | null;
+    const body = await req.json();
+    const { id, name, description, categoryId, purchasePrice, purchaseDate, color, model, size, condition, isListed, status, purchasePaymentId, imageData } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Ürün ID gerekli' }, { status: 400 });
@@ -150,34 +109,31 @@ export async function PUT(req: NextRequest) {
     }
 
     const updateData: Record<string, unknown> = {};
-    if (name !== null) updateData.name = name.trim();
-    if (description !== null) updateData.description = description?.trim() || null;
-    if (categoryId !== null) updateData.categoryId = categoryId || null;
-    if (!isNaN(purchasePrice)) updateData.purchasePrice = purchasePrice;
+    if (name !== undefined) updateData.name = name.trim();
+    if (description !== undefined) updateData.description = description?.trim() || null;
+    if (categoryId !== undefined) updateData.categoryId = categoryId || null;
+    if (purchasePrice !== undefined) updateData.purchasePrice = parseFloat(purchasePrice);
     if (purchaseDate) updateData.purchaseDate = new Date(purchaseDate);
-    if (color !== null) updateData.color = color?.trim() || null;
-    if (model !== null) updateData.model = model?.trim() || null;
-    if (size !== null) updateData.size = size?.trim() || null;
-    if (condition !== null) updateData.condition = condition?.trim() || null;
-    if (isListed !== null) {
-      updateData.isListed = isListed === 'true';
-      if (isListed === 'true' && !existing.isListed) {
+    if (color !== undefined) updateData.color = color?.trim() || null;
+    if (model !== undefined) updateData.model = model?.trim() || null;
+    if (size !== undefined) updateData.size = size?.trim() || null;
+    if (condition !== undefined) updateData.condition = condition?.trim() || null;
+    if (isListed !== undefined) {
+      updateData.isListed = isListed === 'true' || isListed === true;
+      if ((isListed === 'true' || isListed === true) && !existing.isListed) {
         updateData.listedDate = new Date();
         updateData.status = 'listed';
-      } else if (isListed === 'false') {
+      } else if (isListed === 'false' || isListed === false) {
         updateData.listedDate = null;
         if (existing.status === 'listed') updateData.status = 'in_stock';
       }
     }
-    if (status !== null) updateData.status = status;
+    if (status !== undefined) updateData.status = status;
     if (purchasePaymentId) updateData.purchasePaymentId = purchasePaymentId;
 
-    // Handle image update
-    if (imageFile && imageFile.size > 0) {
-      if (imageFile.size > 2 * 1024 * 1024) {
-        return NextResponse.json({ error: 'Resim boyutu 2MB\'dan küçük olmalı' }, { status: 400 });
-      }
-      updateData.imageData = await fileToBase64(imageFile);
+    // Handle image update - only update if new imageData provided
+    if (imageData !== undefined && imageData !== null) {
+      updateData.imageData = imageData;
     }
 
     const product = await db.product.update({
