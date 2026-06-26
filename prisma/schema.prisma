@@ -8,6 +8,12 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// NOTE: Both DATABASE_URL and DIRECT_URL should point to the Supabase pooler.
+// For Supabase NANO plans, use the Session mode pooler (port 5432) for BOTH.
+// Example:
+//   DATABASE_URL=postgresql://postgres.REF:PASSWORD@aws-0-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require
+//   DIRECT_URL=postgresql://postgres.REF:PASSWORD@aws-0-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require
+
 model Category {
   id        String     @id @default(cuid())
   name      String
