@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingCart, Megaphone, Wallet, PiggyBank, Receipt } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingCart, Megaphone, Wallet, PiggyBank, Receipt, BarChart3 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 interface Stats {
@@ -35,21 +35,39 @@ const COLORS = ['#10b981', '#f59e0b', '#6366f1', '#ec4899', '#8b5cf6', '#14b8a6'
 export default function StatisticsTab({ refreshKey }: Props) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState(false);
 
   const fetchStats = useCallback(() => {
+    setDbError(false);
     fetch('/api/statistics')
       .then(r => r.json())
-      .then(data => { setStats(data); setLoading(false); })
-      .catch(() => { setLoading(false); });
+      .then(data => {
+        if (data && !data.error) setStats(data);
+        else setDbError(true);
+        setLoading(false);
+      })
+      .catch(() => { setLoading(false); setDbError(true); });
   }, []);
 
   useEffect(() => { fetchStats(); }, [refreshKey, fetchStats]);
 
-  if (loading || !stats) {
+  if (loading) {
     return (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[1,2,3,4].map(i => <Card key={i} className="animate-pulse"><CardContent className="p-4"><div className="h-16 bg-slate-200 rounded" /></CardContent></Card>)}
       </div>
+    );
+  }
+
+  if (dbError || !stats) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="py-12 text-center">
+          <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-500">İstatistikler yüklenemedi</p>
+          <p className="text-xs text-slate-400 mt-1">Veritabanı bağlantısını kontrol edin</p>
+        </CardContent>
+      </Card>
     );
   }
 

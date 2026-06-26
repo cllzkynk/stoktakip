@@ -1,0 +1,589 @@
+     1→'use client';
+     2→
+     3→import React, { useState, useEffect } from 'react';
+     4→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+     5→import { Button } from '@/components/ui/button';
+     6→import { Input } from '@/components/ui/input';
+     7→import { Label } from '@/components/ui/label';
+     8→import { Badge } from '@/components/ui/badge';
+     9→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+    10→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+    11→import { Textarea } from '@/components/ui/textarea';
+    12→import { ScrollArea } from '@/components/ui/scroll-area';
+    13→import { Separator } from '@/components/ui/separator';
+    14→import { Plus, Search, Eye, Megaphone, ShoppingBag, Edit, Trash2, Image as ImageIcon, Package } from 'lucide-react';
+    15→import { useToast } from '@/hooks/use-toast';
+    16→import { compressImage, getBase64SizeKB } from '@/lib/image-compress';
+    17→
+    18→interface Category { id: string; name: string; parentId: string | null; children: Category[]; }
+    19→interface PaymentMethod { id: string; name: string; }
+    20→interface Sale { id: string; salePrice: number; saleDate: string; salesChannelId: string; salePaymentId: string; buyerInfo?: string; notes?: string; salesChannel: { id: string; name: string }; salePayment: { id: string; name: string }; }
+    21→interface Product { id: string; productNumber: number; name: string; description?: string; categoryId?: string; category?: Category; purchasePrice: number; purchaseDate: string; color?: string; model?: string; size?: string; condition?: string; imageUrl?: string; imageData?: string; isListed: boolean; listedDate?: string; status: string; purchasePaymentId: string; purchasePayment: PaymentMethod; sale?: Sale; expenses: { id: string; amount: number; description: string; date: string }[]; }
+    22→
+    23→// Get product image src - prefers imageData (base64 in DB), falls back to imageUrl (file path)
+    24→// For sold products older than 7 days, shows reduced quality indicator
+    25→const getProductImage = (product: Product) => product.imageData || product.imageUrl || null;
+    26→
+    27→// Check if a sold product's image should be displayed in low quality (7+ days since sale)
+    28→const isOldSoldProduct = (product: Product): boolean => {
+    29→  if (product.status !== 'sold' || !product.sale) return false;
+    30→  const saleDate = new Date(product.sale.saleDate);
+    31→  const sevenDaysAgo = new Date();
+    32→  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    33→  return saleDate < sevenDaysAgo;
+    34→};
+    35→
+    36→interface Props {
+    37→  refreshKey: number;
+    38→  onRefresh: () => void;
+    39→}
+    40→
+    41→export default function InventoryTab({ refreshKey, onRefresh }: Props) {
+    42→  const { toast } = useToast();
+    43→  const [products, setProducts] = useState<Product[]>([]);
+    44→  const [categories, setCategories] = useState<Category[]>([]);
+    45→  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+    46→  const [loading, setLoading] = useState(true);
+    47→  const [search, setSearch] = useState('');
+    48→  const [statusFilter, setStatusFilter] = useState('all');
+    49→  const [showAddDialog, setShowAddDialog] = useState(false);
+    50→  const [showSaleDialog, setShowSaleDialog] = useState(false);
+    51→  const [showDetailDialog, setShowDetailDialog] = useState(false);
+    52→  const [showEditDialog, setShowEditDialog] = useState(false);
+    53→  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    54→  const [imagePreview, setImagePreview] = useState<string | null>(null);
+    55→  const [compressedImage, setCompressedImage] = useState<string | null>(null);
+    56→  const [imageSize, setImageSize] = useState<number>(0);
+    57→
+    58→  // Sale form
+    59→  const [saleForm, setSaleForm] = useState({ salePrice: '', saleDate: new Date().toISOString().split('T')[0], salesChannelId: '', salePaymentId: '', buyerInfo: '', notes: '' });
+    60→
+    61→  // Add/Edit form
+    62→  const [productForm, setProductForm] = useState({
+    63→    name: '', description: '', categoryId: '', purchasePrice: '', purchaseDate: new Date().toISOString().split('T')[0], color: '', model: '', size: '', condition: '', purchasePaymentId: '',
+    64→  });
+    65→
+    66→  const fetchData = async () => {
+    67→    setLoading(true);
+    68→    try {
+    69→      const params = new URLSearchParams();
+    70→      if (statusFilter !== 'all') params.set('status', statusFilter);
+    71→      if (search) params.set('search', search);
+    72→
+    73→      const [productsRes, catRes, pmRes] = await Promise.all([
+    74→        fetch(`/api/products?${params.toString()}`),
+    75→        fetch('/api/categories'),
+    76→        fetch('/api/payment-methods'),
+    77→      ]);
+    78→      setProducts(await productsRes.json());
+    79→      setCategories(await catRes.json());
+    80→      setPaymentMethods(await pmRes.json());
+    81→    } catch { toast({ title: 'Hata', description: 'Veriler yüklenemedi', variant: 'destructive' }); }
+    82→    setLoading(false);
+    83→  };
+    84→
+    85→  useEffect(() => { fetchData(); }, [refreshKey, statusFilter, search]);
+    86→
+    87→  const handleAddProduct = async (e: React.FormEvent) => {
+    88→    e.preventDefault();
+    89→    try {
+    90→      const res = await fetch('/api/products', {
+    91→        method: 'POST',
+    92→        headers: { 'Content-Type': 'application/json' },
+    93→        body: JSON.stringify({
+    94→          ...productForm,
+    95→          imageData: compressedImage,
+    96→        }),
+    97→      });
+    98→      if (!res.ok) throw new Error();
+    99→      toast({ title: 'Başarılı', description: 'Ürün eklendi' });
+   100→      setShowAddDialog(false);
+   101→      resetProductForm();
+   102→      onRefresh();
+   103→    } catch { toast({ title: 'Hata', description: 'Ürün eklenemedi', variant: 'destructive' }); }
+   104→  };
+   105→
+   106→  const handleEditProduct = async (e: React.FormEvent) => {
+   107→    e.preventDefault();
+   108→    if (!selectedProduct) return;
+   109→    try {
+   110→      const res = await fetch('/api/products', {
+   111→        method: 'PUT',
+   112→        headers: { 'Content-Type': 'application/json' },
+   113→        body: JSON.stringify({
+   114→          id: selectedProduct.id,
+   115→          name: productForm.name,
+   116→          description: productForm.description,
+   117→          categoryId: productForm.categoryId,
+   118→          purchasePrice: productForm.purchasePrice,
+   119→          purchaseDate: productForm.purchaseDate,
+   120→          color: productForm.color,
+   121→          model: productForm.model,
+   122→          size: productForm.size,
+   123→          condition: productForm.condition,
+   124→          purchasePaymentId: productForm.purchasePaymentId,
+   125→          imageData: compressedImage, // null if not changed, new base64 if changed
+   126→        }),
+   127→      });
+   128→      if (!res.ok) throw new Error();
+   129→      toast({ title: 'Başarılı', description: 'Ürün güncellendi' });
+   130→      setShowEditDialog(false);
+   131→      resetProductForm();
+   132→      onRefresh();
+   133→    } catch { toast({ title: 'Hata', description: 'Ürün güncellenemedi', variant: 'destructive' }); }
+   134→  };
+   135→
+   136→  const handleDeleteProduct = async (id: string) => {
+   137→    if (!confirm('Bu ürünü silmek istediğinize emin misiniz?')) return;
+   138→    try {
+   139→      const res = await fetch(`/api/products?id=${id}`, { method: 'DELETE' });
+   140→      if (!res.ok) throw new Error();
+   141→      toast({ title: 'Silindi', description: 'Ürün silindi' });
+   142→      setShowDetailDialog(false);
+   143→      onRefresh();
+   144→    } catch { toast({ title: 'Hata', description: 'Ürün silinemedi', variant: 'destructive' }); }
+   145→  };
+   146→
+   147→  const handleToggleListed = async (product: Product) => {
+   148→    try {
+   149→      const formData = new FormData();
+   150→      formData.append('id', product.id);
+   151→      formData.append('isListed', (!product.isListed).toString());
+   152→      formData.append('name', product.name);
+   153→      formData.append('purchasePaymentId', product.purchasePaymentId);
+   154→
+   155→      const res = await fetch('/api/products', { method: 'PUT', body: formData });
+   156→      if (!res.ok) throw new Error();
+   157→      toast({ title: product.isListed ? 'İlandan kaldırıldı' : 'İlana eklendi', description: product.name });
+   158→      onRefresh();
+   159→    } catch { toast({ title: 'Hata', description: 'Durum güncellenemedi', variant: 'destructive' }); }
+   160→  };
+   161→
+   162→  const handleSellProduct = async (e: React.FormEvent) => {
+   163→    e.preventDefault();
+   164→    if (!selectedProduct) return;
+   165→    try {
+   166→      const res = await fetch('/api/sales', {
+   167→        method: 'POST',
+   168→        headers: { 'Content-Type': 'application/json' },
+   169→        body: JSON.stringify({ ...saleForm, productId: selectedProduct.id }),
+   170→      });
+   171→      if (!res.ok) throw new Error();
+   172→      toast({ title: 'Satış kaydedildi', description: `${selectedProduct.name} satıldı!` });
+   173→      setShowSaleDialog(false);
+   174→      setSaleForm({ salePrice: '', saleDate: new Date().toISOString().split('T')[0], salesChannelId: '', salePaymentId: '', buyerInfo: '', notes: '' });
+   175→      onRefresh();
+   176→    } catch { toast({ title: 'Hata', description: 'Satış kaydedilemedi', variant: 'destructive' }); }
+   177→  };
+   178→
+   179→  const resetProductForm = () => {
+   180→    setProductForm({ name: '', description: '', categoryId: '', purchasePrice: '', purchaseDate: new Date().toISOString().split('T')[0], color: '', model: '', size: '', condition: '', purchasePaymentId: '' });
+   181→    setCompressedImage(null);
+   182→    setImageSize(0);
+   183→    setImagePreview(null);
+   184→  };
+   185→
+   186→  const openEditDialog = (product: Product) => {
+   187→    setSelectedProduct(product);
+   188→    setProductForm({
+   189→      name: product.name,
+   190→      description: product.description || '',
+   191→      categoryId: product.categoryId || '',
+   192→      purchasePrice: product.purchasePrice.toString(),
+   193→      purchaseDate: new Date(product.purchaseDate).toISOString().split('T')[0],
+   194→      color: product.color || '',
+   195→      model: product.model || '',
+   196→      size: product.size || '',
+   197→      condition: product.condition || '',
+   198→      purchasePaymentId: product.purchasePaymentId,
+   199→    });
+   200→    setImagePreview(getProductImage(product));
+   201→    setCompressedImage(null); // will be set if user picks a new image
+   202→    setImageSize(0);
+   203→    setShowEditDialog(true);
+   204→  };
+   205→
+   206→  const openSaleDialog = (product: Product) => {
+   207→    setSelectedProduct(product);
+   208→    setSaleForm(prev => ({ ...prev, salePrice: '', salesChannelId: '', salePaymentId: '' }));
+   209→    setShowSaleDialog(true);
+   210→  };
+   211→
+   212→  const flattenCategories = (cats: Category[], prefix = ''): { id: string; name: string }[] => {
+   213→    let result: { id: string; name: string }[] = [];
+   214→    for (const cat of cats) {
+   215→      result.push({ id: cat.id, name: prefix + cat.name });
+   216→      if (cat.children?.length) {
+   217→        result = result.concat(flattenCategories(cat.children, prefix + cat.name + ' > '));
+   218→      }
+   219→    }
+   220→    return result;
+   221→  };
+   222→
+   223→  const flatCategories = flattenCategories(categories);
+   224→
+   225→  const getStatusBadge = (product: Product) => {
+   226→    if (product.status === 'sold') return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs">Satıldı</Badge>;
+   227→    if (product.isListed) return <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs"><Megaphone className="w-3 h-3 mr-1" />İlanda</Badge>;
+   228→    return <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-xs">Stokta</Badge>;
+   229→  };
+   230→
+   231→  const profit = selectedProduct?.sale ? selectedProduct.sale.salePrice - selectedProduct.purchasePrice - (selectedProduct.expenses?.reduce((s, e) => s + e.amount, 0) || 0) : 0;
+   232→
+   233→  return (
+   234→    <div className="space-y-4">
+   235→      {/* Header with search and add */}
+   236→      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+   237→        <div className="flex items-center gap-2 w-full sm:w-auto">
+   238→          <div className="relative flex-1 sm:w-64">
+   239→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+   240→            <Input placeholder="Ürün ara..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-white" />
+   241→          </div>
+   242→          <Select value={statusFilter} onValueChange={setStatusFilter}>
+   243→            <SelectTrigger className="w-32 bg-white"><SelectValue /></SelectTrigger>
+   244→            <SelectContent>
+   245→              <SelectItem value="all">Tümü</SelectItem>
+   246→              <SelectItem value="in_stock">Stokta</SelectItem>
+   247→              <SelectItem value="listed">İlanda</SelectItem>
+   248→              <SelectItem value="sold">Satıldı</SelectItem>
+   249→            </SelectContent>
+   250→          </Select>
+   251→        </div>
+   252→        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+   253→          <DialogTrigger asChild>
+   254→            <Button className="bg-emerald-600 hover:bg-emerald-700 gap-2 w-full sm:w-auto" onClick={resetProductForm}>
+   255→              <Plus className="w-4 h-4" /> Ürün Ekle
+   256→            </Button>
+   257→          </DialogTrigger>
+   258→          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   259→            <DialogHeader><DialogTitle>Yeni Ürün Ekle</DialogTitle></DialogHeader>
+   260→            <form onSubmit={handleAddProduct} className="space-y-3">
+   261→              <div><Label>Ürün Adı *</Label><Input value={productForm.name} onChange={e => setProductForm(p => ({...p, name: e.target.value}))} required /></div>
+   262→              <div><Label>Açıklama</Label><Textarea value={productForm.description} onChange={e => setProductForm(p => ({...p, description: e.target.value}))} /></div>
+   263→              <div className="grid grid-cols-2 gap-3">
+   264→                <div><Label>Kategori</Label>
+   265→                  <Select value={productForm.categoryId} onValueChange={v => setProductForm(p => ({...p, categoryId: v}))}>
+   266→                    <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+   267→                    <SelectContent>{flatCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+   268→                  </Select>
+   269→                </div>
+   270→                <div><Label>Alış Fiyatı *</Label><Input type="number" step="0.01" value={productForm.purchasePrice} onChange={e => setProductForm(p => ({...p, purchasePrice: e.target.value}))} required /></div>
+   271→              </div>
+   272→              <div className="grid grid-cols-2 gap-3">
+   273→                <div><Label>Alış Tarihi *</Label><Input type="date" value={productForm.purchaseDate} onChange={e => setProductForm(p => ({...p, purchaseDate: e.target.value}))} required /></div>
+   274→                <div><Label>Ödeme Yöntemi *</Label>
+   275→                  <Select value={productForm.purchasePaymentId} onValueChange={v => setProductForm(p => ({...p, purchasePaymentId: v}))}>
+   276→                    <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+   277→                    <SelectContent>{paymentMethods.map(pm => <SelectItem key={pm.id} value={pm.id}>{pm.name}</SelectItem>)}</SelectContent>
+   278→                  </Select>
+   279→                </div>
+   280→              </div>
+   281→              <div className="grid grid-cols-3 gap-3">
+   282→                <div><Label>Renk</Label><Input value={productForm.color} onChange={e => setProductForm(p => ({...p, color: e.target.value}))} /></div>
+   283→                <div><Label>Model</Label><Input value={productForm.model} onChange={e => setProductForm(p => ({...p, model: e.target.value}))} /></div>
+   284→                <div><Label>Beden</Label><Input value={productForm.size} onChange={e => setProductForm(p => ({...p, size: e.target.value}))} /></div>
+   285→              </div>
+   286→              <div><Label>Durum</Label><Input value={productForm.condition} onChange={e => setProductForm(p => ({...p, condition: e.target.value}))} placeholder="Yeni, İyi, Orta vb." /></div>
+   287→              <div>
+   288→                <Label>Resim</Label>
+   289→                <div className="mt-1 flex items-center gap-3">
+   290→                  <label className="flex items-center gap-2 cursor-pointer px-4 py-2 border-2 border-dashed border-slate-300 rounded-lg hover:border-emerald-400 transition-colors">
+   291→                    <ImageIcon className="w-4 h-4 text-slate-400" />
+   292→                    <span className="text-sm text-slate-500">Resim Seç</span>
+   293→                    <input type="file" accept="image/*" className="hidden" onChange={async e => {
+   294→                      const f = e.target.files?.[0];
+   295→                      if (f) {
+   296→                        try {
+   297→                          const compressed = await compressImage(f, { maxWidth: 600, maxHeight: 600, quality: 0.5 });
+   298→                          setCompressedImage(compressed);
+   299→                          setImagePreview(compressed);
+   300→                          setImageSize(getBase64SizeKB(compressed));
+   301→                        } catch {
+   302→                          toast({ title: 'Hata', description: 'Resim sıkıştırılamadı', variant: 'destructive' });
+   303→                        }
+   304→                      }
+   305→                    }} />
+   306→                  </label>
+   307→                  {imagePreview && (
+   308→                    <div className="flex items-center gap-2">
+   309→                      <img src={imagePreview} alt="Preview" className="w-16 h-16 object-cover rounded-lg border" />
+   310→                      {imageSize > 0 && <span className="text-[10px] text-emerald-600 font-medium">{imageSize} KB</span>}
+   311→                    </div>
+   312→                  )}
+   313→                </div>
+   314→              </div>
+   315→              <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">Ürünü Ekle</Button>
+   316→            </form>
+   317→          </DialogContent>
+   318→        </Dialog>
+   319→      </div>
+   320→
+   321→      {/* Product Grid */}
+   322→      {loading ? (
+   323→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   324→          {[1,2,3].map(i => <Card key={i} className="animate-pulse"><CardContent className="p-4"><div className="h-40 bg-slate-200 rounded-lg mb-3" /><div className="h-4 bg-slate-200 rounded w-3/4 mb-2" /><div className="h-4 bg-slate-200 rounded w-1/2" /></CardContent></Card>)}
+   325→        </div>
+   326→      ) : products.length === 0 ? (
+   327→        <Card className="border-dashed">
+   328→          <CardContent className="py-16 text-center">
+   329→            <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+   330→            <h3 className="text-lg font-semibold text-slate-500 mb-1">Henüz ürün yok</h3>
+   331→            <p className="text-slate-400 text-sm">İlk ürününüzü ekleyerek başlayın</p>
+   332→          </CardContent>
+   333→        </Card>
+   334→      ) : (
+   335→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   336→          {products.map(product => (
+   337→            <Card key={product.id} className="group hover:shadow-lg transition-all duration-200 border-slate-200 overflow-hidden">
+   338→              <div className="relative">
+   339→                {getProductImage(product) ? (
+   340→                  <img
+   341→                    src={getProductImage(product)!}
+   342→                    alt={product.name}
+   343→                    className={`w-full h-44 object-cover ${isOldSoldProduct(product) ? 'blur-[1px] opacity-70' : ''}`}
+   344→                  />
+   345→                ) : (
+   346→                  <div className="w-full h-44 bg-gradient-to-br from-slate-100 to-slate-50 flex items-center justify-center">
+   347→                    <Package className="w-12 h-12 text-slate-300" />
+   348→                  </div>
+   349→                )}
+   350→                {isOldSoldProduct(product) && (
+   351→                  <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full">
+   352→                    Arşiv kalite
+   353→                  </div>
+   354→                )}
+   355→                <div className="absolute top-2 left-2">{getStatusBadge(product)}</div>
+   356→                <div className="absolute top-2 right-2">
+   357→                  <span className="text-xs font-mono bg-black/60 text-white px-2 py-0.5 rounded-full">#{product.productNumber}</span>
+   358→                </div>
+   359→                {product.isListed && (
+   360→                  <div className="absolute bottom-2 right-2">
+   361→                    <span className="flex items-center gap-1 bg-amber-500 text-white text-xs px-2 py-1 rounded-full shadow-lg">
+   362→                      <Megaphone className="w-3 h-3" /> İlanda
+   363→                    </span>
+   364→                  </div>
+   365→                )}
+   366→              </div>
+   367→              <CardContent className="p-3">
+   368→                <h3 className="font-semibold text-slate-800 truncate">{product.name}</h3>
+   369→                <div className="flex items-center gap-2 mt-1 text-xs text-slate-500">
+   370→                  {product.category && <span>{product.category.name}</span>}
+   371→                  {product.color && <span>• {product.color}</span>}
+   372→                  {product.model && <span>• {product.model}</span>}
+   373→                </div>
+   374→                <div className="flex items-center justify-between mt-3">
+   375→                  <div>
+   376→                    <span className="text-lg font-bold text-slate-800">{product.purchasePrice.toFixed(2)} ₺</span>
+   377→                    <span className="text-xs text-slate-400 ml-1">alış</span>
+   378→                  </div>
+   379→                  {product.sale && (
+   380→                    <div className="text-right">
+   381→                      <span className="text-lg font-bold text-emerald-600">{product.sale.salePrice.toFixed(2)} ₺</span>
+   382→                      <span className="text-xs text-slate-400 ml-1">satış</span>
+   383→                    </div>
+   384→                  )}
+   385→                </div>
+   386→                {product.sale && (
+   387→                  <div className={`text-xs font-semibold mt-1 ${product.sale.salePrice - product.purchasePrice >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+   388→                    {product.sale.salePrice - product.purchasePrice >= 0 ? '+' : ''}{(product.sale.salePrice - product.purchasePrice).toFixed(2)} ₺ kar
+   389→                  </div>
+   390→                )}
+   391→                <Separator className="my-2" />
+   392→                <div className="flex items-center gap-1">
+   393→                  {product.status !== 'sold' && (
+   394→                    <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 flex-1" onClick={() => openSaleDialog(product)}>
+   395→                      <ShoppingBag className="w-3 h-3" /> Sat
+   396→                    </Button>
+   397→                  )}
+   398→                  <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={() => handleToggleListed(product)}>
+   399→                    <Megaphone className="w-3 h-3" />
+   400→                  </Button>
+   401→                  <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={() => { setSelectedProduct(product); setShowDetailDialog(true); }}>
+   402→                    <Eye className="w-3 h-3" />
+   403→                  </Button>
+   404→                  <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={() => openEditDialog(product)}>
+   405→                    <Edit className="w-3 h-3" />
+   406→                  </Button>
+   407→                  <Button size="sm" variant="ghost" className="h-7 text-xs text-red-500 gap-1" onClick={() => handleDeleteProduct(product.id)}>
+   408→                    <Trash2 className="w-3 h-3" />
+   409→                  </Button>
+   410→                </div>
+   411→              </CardContent>
+   412→            </Card>
+   413→          ))}
+   414→        </div>
+   415→      )}
+   416→
+   417→      {/* Sale Dialog */}
+   418→      <Dialog open={showSaleDialog} onOpenChange={setShowSaleDialog}>
+   419→        <DialogContent className="max-w-md">
+   420→          <DialogHeader><DialogTitle>Satış Kaydet</DialogTitle></DialogHeader>
+   421→          {selectedProduct && (
+   422→            <div className="mb-3 p-3 bg-slate-50 rounded-lg">
+   423→              <p className="font-semibold">{selectedProduct.name}</p>
+   424→              <p className="text-sm text-slate-500">Alış: {selectedProduct.purchasePrice.toFixed(2)} ₺</p>
+   425→            </div>
+   426→          )}
+   427→          <form onSubmit={handleSellProduct} className="space-y-3">
+   428→            <div><Label>Satış Fiyatı *</Label><Input type="number" step="0.01" value={saleForm.salePrice} onChange={e => setSaleForm(f => ({...f, salePrice: e.target.value}))} required /></div>
+   429→            <div><Label>Satış Tarihi *</Label><Input type="date" value={saleForm.saleDate} onChange={e => setSaleForm(f => ({...f, saleDate: e.target.value}))} required /></div>
+   430→            <div className="grid grid-cols-2 gap-3">
+   431→              <div><Label>Satış Kanalı *</Label>
+   432→                <Select value={saleForm.salesChannelId} onValueChange={v => setSaleForm(f => ({...f, salesChannelId: v}))}>
+   433→                  <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+   434→                  <SelectContent>{/* Fetched dynamically */}<SalesChannelOptions /></SelectContent>
+   435→                </Select>
+   436→              </div>
+   437→              <div><Label>Ödeme Yöntemi *</Label>
+   438→                <Select value={saleForm.salePaymentId} onValueChange={v => setSaleForm(f => ({...f, salePaymentId: v}))}>
+   439→                  <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+   440→                  <SelectContent>{paymentMethods.map(pm => <SelectItem key={pm.id} value={pm.id}>{pm.name}</SelectItem>)}</SelectContent>
+   441→                </Select>
+   442→              </div>
+   443→            </div>
+   444→            <div><Label>Alıcı Bilgisi</Label><Input value={saleForm.buyerInfo} onChange={e => setSaleForm(f => ({...f, buyerInfo: e.target.value}))} /></div>
+   445→            <div><Label>Notlar</Label><Textarea value={saleForm.notes} onChange={e => setSaleForm(f => ({...f, notes: e.target.value}))} /></div>
+   446→            <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">Satışı Kaydet</Button>
+   447→          </form>
+   448→        </DialogContent>
+   449→      </Dialog>
+   450→
+   451→      {/* Detail Dialog */}
+   452→      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
+   453→        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   454→          <DialogHeader><DialogTitle>Ürün Detayı</DialogTitle></DialogHeader>
+   455→          {selectedProduct && (
+   456→            <div className="space-y-4">
+   457→              {getProductImage(selectedProduct) && (
+   458→                <img src={getProductImage(selectedProduct)!} alt={selectedProduct.name} className="w-full max-h-64 object-contain rounded-lg border" />
+   459→              )}
+   460→              <div className="grid grid-cols-2 gap-3 text-sm">
+   461→                <div><span className="text-slate-500">ID:</span> <span className="font-mono">#{selectedProduct.productNumber}</span></div>
+   462→                <div><span className="text-slate-500">Durum:</span> {getStatusBadge(selectedProduct)}</div>
+   463→                <div><span className="text-slate-500">Ad:</span> <span className="font-semibold">{selectedProduct.name}</span></div>
+   464→                <div><span className="text-slate-500">Kategori:</span> {selectedProduct.category?.name || '-'}</div>
+   465→                <div><span className="text-slate-500">Alış Fiyatı:</span> <span className="font-bold">{selectedProduct.purchasePrice.toFixed(2)} ₺</span></div>
+   466→                <div><span className="text-slate-500">Alış Tarihi:</span> {new Date(selectedProduct.purchaseDate).toLocaleDateString('tr-TR')}</div>
+   467→                <div><span className="text-slate-500">Renk:</span> {selectedProduct.color || '-'}</div>
+   468→                <div><span className="text-slate-500">Model:</span> {selectedProduct.model || '-'}</div>
+   469→                <div><span className="text-slate-500">Beden:</span> {selectedProduct.size || '-'}</div>
+   470→                <div><span className="text-slate-500">Kondisyon:</span> {selectedProduct.condition || '-'}</div>
+   471→                <div><span className="text-slate-500">Alış Ödeme:</span> {selectedProduct.purchasePayment?.name || '-'}</div>
+   472→                <div><span className="text-slate-500">İlanda:</span> {selectedProduct.isListed ? '✅ Evet' : '❌ Hayır'}</div>
+   473→              </div>
+   474→              {selectedProduct.description && (
+   475→                <div><span className="text-slate-500 text-sm">Açıklama:</span><p className="text-sm mt-1">{selectedProduct.description}</p></div>
+   476→              )}
+   477→              {selectedProduct.sale && (
+   478→                <>
+   479→                  <Separator />
+   480→                  <div className="bg-emerald-50 p-3 rounded-lg">
+   481→                    <h4 className="font-semibold text-emerald-800 mb-2">Satış Bilgileri</h4>
+   482→                    <div className="grid grid-cols-2 gap-2 text-sm">
+   483→                      <div><span className="text-emerald-600">Satış Fiyatı:</span> <span className="font-bold">{selectedProduct.sale.salePrice.toFixed(2)} ₺</span></div>
+   484→                      <div><span className="text-emerald-600">Satış Tarihi:</span> {new Date(selectedProduct.sale.saleDate).toLocaleDateString('tr-TR')}</div>
+   485→                      <div><span className="text-emerald-600">Kanal:</span> {selectedProduct.sale.salesChannel?.name}</div>
+   486→                      <div><span className="text-emerald-600">Ödeme:</span> {selectedProduct.sale.salePayment?.name}</div>
+   487→                      <div className="col-span-2"><span className="text-emerald-600">Kar:</span> <span className={`font-bold text-lg ${profit >= 0 ? 'text-emerald-700' : 'text-red-500'}`}>{profit >= 0 ? '+' : ''}{profit.toFixed(2)} ₺</span></div>
+   488→                    </div>
+   489→                  </div>
+   490→                </>
+   491→              )}
+   492→              {selectedProduct.expenses?.length > 0 && (
+   493→                <>
+   494→                  <Separator />
+   495→                  <div>
+   496→                    <h4 className="font-semibold text-slate-700 mb-2">Ürün Giderleri</h4>
+   497→                    {selectedProduct.expenses.map(exp => (
+   498→                      <div key={exp.id} className="flex justify-between text-sm py-1 border-b border-slate-100">
+   499→                        <span>{exp.description}</span>
+   500→                        <span className="font-semibold">{exp.amount.toFixed(2)} ₺</span>
+   501→                      </div>
+   502→                    ))}
+   503→                  </div>
+   504→                </>
+   505→              )}
+   506→              <div className="flex gap-2">
+   507→                {selectedProduct.status !== 'sold' && <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => { setShowDetailDialog(false); openSaleDialog(selectedProduct); }}>Sat</Button>}
+   508→                <Button variant="outline" className="flex-1" onClick={() => { setShowDetailDialog(false); openEditDialog(selectedProduct); }}>Düzenle</Button>
+   509→                <Button variant="destructive" onClick={() => handleDeleteProduct(selectedProduct.id)}>Sil</Button>
+   510→              </div>
+   511→            </div>
+   512→          )}
+   513→        </DialogContent>
+   514→      </Dialog>
+   515→
+   516→      {/* Edit Dialog */}
+   517→      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+   518→        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   519→          <DialogHeader><DialogTitle>Ürün Düzenle</DialogTitle></DialogHeader>
+   520→          <form onSubmit={handleEditProduct} className="space-y-3">
+   521→            <input type="hidden" value={selectedProduct?.id} />
+   522→            <div><Label>Ürün Adı *</Label><Input value={productForm.name} onChange={e => setProductForm(p => ({...p, name: e.target.value}))} required /></div>
+   523→            <div><Label>Açıklama</Label><Textarea value={productForm.description} onChange={e => setProductForm(p => ({...p, description: e.target.value}))} /></div>
+   524→            <div className="grid grid-cols-2 gap-3">
+   525→              <div><Label>Kategori</Label>
+   526→                <Select value={productForm.categoryId} onValueChange={v => setProductForm(p => ({...p, categoryId: v}))}>
+   527→                  <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+   528→                  <SelectContent>{flatCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+   529→                </Select>
+   530→              </div>
+   531→              <div><Label>Alış Fiyatı *</Label><Input type="number" step="0.01" value={productForm.purchasePrice} onChange={e => setProductForm(p => ({...p, purchasePrice: e.target.value}))} required /></div>
+   532→            </div>
+   533→            <div className="grid grid-cols-2 gap-3">
+   534→              <div><Label>Alış Tarihi *</Label><Input type="date" value={productForm.purchaseDate} onChange={e => setProductForm(p => ({...p, purchaseDate: e.target.value}))} required /></div>
+   535→              <div><Label>Ödeme Yöntemi *</Label>
+   536→                <Select value={productForm.purchasePaymentId} onValueChange={v => setProductForm(p => ({...p, purchasePaymentId: v}))}>
+   537→                  <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+   538→                  <SelectContent>{paymentMethods.map(pm => <SelectItem key={pm.id} value={pm.id}>{pm.name}</SelectItem>)}</SelectContent>
+   539→                </Select>
+   540→              </div>
+   541→            </div>
+   542→            <div className="grid grid-cols-3 gap-3">
+   543→              <div><Label>Renk</Label><Input value={productForm.color} onChange={e => setProductForm(p => ({...p, color: e.target.value}))} /></div>
+   544→              <div><Label>Model</Label><Input value={productForm.model} onChange={e => setProductForm(p => ({...p, model: e.target.value}))} /></div>
+   545→              <div><Label>Beden</Label><Input value={productForm.size} onChange={e => setProductForm(p => ({...p, size: e.target.value}))} /></div>
+   546→            </div>
+   547→            <div><Label>Durum</Label><Input value={productForm.condition} onChange={e => setProductForm(p => ({...p, condition: e.target.value}))} /></div>
+   548→            <div>
+   549→              <Label>Resim</Label>
+   550→              <div className="mt-1 flex items-center gap-3">
+   551→                <label className="flex items-center gap-2 cursor-pointer px-4 py-2 border-2 border-dashed border-slate-300 rounded-lg hover:border-emerald-400 transition-colors">
+   552→                  <ImageIcon className="w-4 h-4 text-slate-400" />
+   553→                  <span className="text-sm text-slate-500">Değiştir</span>
+   554→                  <input type="file" accept="image/*" className="hidden" onChange={async e => {
+   555→                    const f = e.target.files?.[0];
+   556→                    if (f) {
+   557→                      try {
+   558→                        const compressed = await compressImage(f, { maxWidth: 600, maxHeight: 600, quality: 0.5 });
+   559→                        setCompressedImage(compressed);
+   560→                        setImagePreview(compressed);
+   561→                        setImageSize(getBase64SizeKB(compressed));
+   562→                      } catch {
+   563→                        toast({ title: 'Hata', description: 'Resim sıkıştırılamadı', variant: 'destructive' });
+   564→                      }
+   565→                    }
+   566→                  }} />
+   567→                </label>
+   568→                {imagePreview && (
+   569→                  <div className="flex items-center gap-2">
+   570→                    <img src={imagePreview} alt="Preview" className="w-16 h-16 object-cover rounded-lg border" />
+   571→                    {imageSize > 0 && <span className="text-[10px] text-emerald-600 font-medium">{imageSize} KB</span>}
+   572→                  </div>
+   573→                )}
+   574→              </div>
+   575→            </div>
+   576→            <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">Güncelle</Button>
+   577→          </form>
+   578→        </DialogContent>
+   579→      </Dialog>
+   580→    </div>
+   581→  );
+   582→}
+   583→
+   584→function SalesChannelOptions() {
+   585→  const [channels, setChannels] = useState<{id: string; name: string}[]>([]);
+   586→  useEffect(() => { fetch('/api/sales-channels').then(r => r.json()).then(setChannels).catch(() => {}); }, []);
+   587→  return <>{channels.map(ch => <SelectItem key={ch.id} value={ch.id}>{ch.name}</SelectItem>)}</>;
+   588→}
+   589→

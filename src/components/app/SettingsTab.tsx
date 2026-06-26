@@ -30,8 +30,10 @@ export default function SettingsTab({ refreshKey, onRefresh }: Props) {
   const fetchData = async () => {
     try {
       const [pmRes, scRes] = await Promise.all([fetch('/api/payment-methods'), fetch('/api/sales-channels')]);
-      setPaymentMethods(await pmRes.json());
-      setSalesChannels(await scRes.json());
+      const pmData = pmRes.ok ? await pmRes.json() : [];
+      const scData = scRes.ok ? await scRes.json() : [];
+      setPaymentMethods(Array.isArray(pmData) ? pmData : []);
+      setSalesChannels(Array.isArray(scData) ? scData : []);
     } catch { toast({ title: 'Hata', description: 'Veriler yüklenemedi', variant: 'destructive' }); }
   };
 

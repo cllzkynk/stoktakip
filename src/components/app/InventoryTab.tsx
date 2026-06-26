@@ -75,9 +75,12 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
         fetch('/api/categories'),
         fetch('/api/payment-methods'),
       ]);
-      setProducts(await productsRes.json());
-      setCategories(await catRes.json());
-      setPaymentMethods(await pmRes.json());
+      const productsData = productsRes.ok ? await productsRes.json() : [];
+      const catData = catRes.ok ? await catRes.json() : [];
+      const pmData = pmRes.ok ? await pmRes.json() : [];
+      setProducts(Array.isArray(productsData) ? productsData : []);
+      setCategories(Array.isArray(catData) ? catData : []);
+      setPaymentMethods(Array.isArray(pmData) ? pmData : []);
     } catch { toast({ title: 'Hata', description: 'Veriler yüklenemedi', variant: 'destructive' }); }
     setLoading(false);
   };

@@ -32,8 +32,10 @@ export default function ExpensesTab({ refreshKey, onRefresh }: Props) {
   const fetchData = async () => {
     try {
       const [expRes, pmRes] = await Promise.all([fetch('/api/expenses'), fetch('/api/payment-methods')]);
-      setExpenses(await expRes.json());
-      setPaymentMethods(await pmRes.json());
+      const expData = expRes.ok ? await expRes.json() : [];
+      const pmData = pmRes.ok ? await pmRes.json() : [];
+      setExpenses(Array.isArray(expData) ? expData : []);
+      setPaymentMethods(Array.isArray(pmData) ? pmData : []);
     } catch { toast({ title: 'Hata', description: 'Veriler yüklenemedi', variant: 'destructive' }); }
   };
 

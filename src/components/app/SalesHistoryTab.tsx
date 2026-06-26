@@ -37,14 +37,15 @@ export default function SalesHistoryTab({ refreshKey, onRefresh }: Props) {
   const [channels, setChannels] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
-    fetch('/api/sales-channels').then(r => r.json()).then(setChannels).catch(() => {});
+    fetch('/api/sales-channels').then(r => r.json()).then(data => { if (Array.isArray(data)) setChannels(data); }).catch(() => {});
   }, []);
 
   const fetchSales = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/sales');
-      setSales(await res.json());
+      const data = res.ok ? await res.json() : [];
+      setSales(Array.isArray(data) ? data : []);
     } catch { toast({ title: 'Hata', description: 'Satışlar yüklenemedi', variant: 'destructive' }); }
     setLoading(false);
   };

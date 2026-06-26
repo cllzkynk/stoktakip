@@ -25,7 +25,8 @@ export default function CategoriesTab({ refreshKey, onRefresh }: Props) {
   const fetchCategories = async () => {
     try {
       const res = await fetch('/api/categories');
-      setCategories(await res.json());
+      const data = res.ok ? await res.json() : [];
+      setCategories(Array.isArray(data) ? data : []);
     } catch { toast({ title: 'Hata', description: 'Kategoriler yüklenemedi', variant: 'destructive' }); }
   };
 

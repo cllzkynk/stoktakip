@@ -33,11 +33,13 @@ export default function StockTrackerApp() {
     fetch('/api/statistics')
       .then(r => r.json())
       .then(data => {
-        setStats({
-          inStockCount: data.inStockCount || 0,
-          listedCount: data.listedCount || 0,
-          soldCount: data.soldCount || 0,
-        });
+        if (data && !data.error) {
+          setStats({
+            inStockCount: data.inStockCount || 0,
+            listedCount: data.listedCount || 0,
+            soldCount: data.soldCount || 0,
+          });
+        }
       })
       .catch(() => {});
   }, [refreshKey]);
