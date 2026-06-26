@@ -46,10 +46,12 @@ export async function GET() {
       const totalExp = pm.expenses.reduce((sum, e) => sum + e.amount, 0);
       const totalSavings = pm.expenses.filter(e => e.type === 'savings').reduce((sum, e) => sum + e.amount, 0);
       const totalExtraSpending = pm.expenses.filter(e => e.type === 'extra_spending').reduce((sum, e) => sum + e.amount, 0);
-      const balance = totalIn - totalOut - totalExp;
+      const initialBalance = pm.initialBalance || 0;
+      const balance = initialBalance + totalIn - totalOut - totalExp;
       return {
         id: pm.id,
         name: pm.name,
+        initialBalance,
         totalIn,
         totalOut,
         totalExpenses: totalExp,
@@ -147,6 +149,8 @@ export async function GET() {
       totalWithdrawn,
       totalExtraSpending,
       totalAllWithdrawn,
+      totalInitialBalance: paymentMethodStats.reduce((s, pm) => s + pm.initialBalance, 0),
+      totalBalance: paymentMethodStats.reduce((s, pm) => s + pm.balance, 0),
       avgProfit,
       inStockCount,
       listedCount,

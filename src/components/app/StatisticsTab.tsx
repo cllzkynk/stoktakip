@@ -13,13 +13,15 @@ interface Stats {
   totalWithdrawn: number;
   totalExtraSpending: number;
   totalAllWithdrawn: number;
+  totalInitialBalance: number;
+  totalBalance: number;
   avgProfit: number;
   inStockCount: number;
   listedCount: number;
   soldCount: number;
   totalProducts: number;
   inStockValue: number;
-  paymentMethodStats: { id: string; name: string; totalIn: number; totalOut: number; totalExpenses: number; totalSavings: number; totalExtraSpending: number; balance: number }[];
+  paymentMethodStats: { id: string; name: string; initialBalance: number; totalIn: number; totalOut: number; totalExpenses: number; totalSavings: number; totalExtraSpending: number; balance: number }[];
   salesChannelStats: { id: string; name: string; totalSales: number; totalRevenue: number }[];
   topColors: [string, number][];
   topCategories: { name: string; count: number; revenue: number }[];
@@ -78,11 +80,11 @@ export default function StatisticsTab({ refreshKey }: Props) {
             <p className={`text-2xl font-bold ${stats.totalProfit >= 0 ? 'text-teal-700' : 'text-red-600'}`}>{fmt(stats.totalProfit)}</p>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200">
+        <Card className="bg-gradient-to-br from-violet-50 to-violet-100/50 border-violet-200">
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-2"><PiggyBank className="w-5 h-5 text-amber-600" /><span className="text-xs text-amber-600 font-medium">Çekilen (Birikimde)</span></div>
-            <p className="text-2xl font-bold text-amber-700">{fmt(stats.totalWithdrawn)}</p>
-            <p className="text-[10px] text-amber-500">Bende kalan</p>
+            <div className="flex items-center gap-2 mb-2"><Wallet className="w-5 h-5 text-violet-600" /><span className="text-xs text-violet-600 font-medium">Mevcut Bakiye</span></div>
+            <p className="text-2xl font-bold text-violet-700">{fmt(stats.totalBalance)}</p>
+            <p className="text-[10px] text-violet-500">Başlangıç: {fmt(stats.totalInitialBalance)}</p>
           </CardContent>
         </Card>
       </div>
@@ -170,7 +172,8 @@ export default function StatisticsTab({ refreshKey }: Props) {
                     Bakiye: {pm.balance >= 0 ? '+' : ''}{pm.balance.toFixed(2)} ₺
                   </Badge>
                 </div>
-                <div className="grid grid-cols-4 gap-2 text-xs">
+                <div className="grid grid-cols-5 gap-2 text-xs">
+                  <div className="text-center"><span className="text-violet-500">Başlangıç</span><p className="font-semibold text-violet-600">{pm.initialBalance.toFixed(2)} ₺</p></div>
                   <div className="text-center"><span className="text-slate-500">Gelen</span><p className="font-semibold text-emerald-600">{pm.totalIn.toFixed(2)} ₺</p></div>
                   <div className="text-center"><span className="text-slate-500">Çıkan</span><p className="font-semibold text-red-500">{pm.totalOut.toFixed(2)} ₺</p></div>
                   <div className="text-center"><span className="text-emerald-600">Birikimde</span><p className="font-semibold text-emerald-700">{pm.totalSavings.toFixed(2)} ₺</p></div>
@@ -183,13 +186,11 @@ export default function StatisticsTab({ refreshKey }: Props) {
               <div className="flex items-center justify-between mb-2">
                 <span className="font-bold text-sm text-emerald-800">TOPLAM</span>
                 <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs">
-                  {(() => {
-                    const totalBalance = stats.paymentMethodStats.reduce((s, pm) => s + pm.balance, 0);
-                    return `Bakiye: ${totalBalance >= 0 ? '+' : ''}${totalBalance.toFixed(2)} ₺`;
-                  })()}
+                  Bakiye: {stats.totalBalance >= 0 ? '+' : ''}{stats.totalBalance.toFixed(2)} ₺
                 </Badge>
               </div>
-              <div className="grid grid-cols-4 gap-2 text-xs">
+              <div className="grid grid-cols-5 gap-2 text-xs">
+                <div className="text-center"><span className="text-violet-600">Başlangıç</span><p className="font-bold text-violet-700">{stats.totalInitialBalance.toFixed(2)} ₺</p></div>
                 <div className="text-center"><span className="text-emerald-600">Gelen</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalIn, 0).toFixed(2)} ₺</p></div>
                 <div className="text-center"><span className="text-emerald-600">Çıkan</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalOut, 0).toFixed(2)} ₺</p></div>
                 <div className="text-center"><span className="text-emerald-600">Birikimde</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalSavings, 0).toFixed(2)} ₺</p></div>

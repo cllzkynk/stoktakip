@@ -19,20 +19,48 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name } = body;
+    const { name, initialBalance } = body;
 
     if (!name || name.trim() === '') {
       return NextResponse.json({ error: 'Ödeme yöntemi adı gerekli' }, { status: 400 });
     }
 
     const paymentMethod = await db.paymentMethod.create({
-      data: { name: name.trim() },
+      data: {
+        name: name.trim(),
+        initialBalance: initialBalance ? parseFloat(initialBalance) : 0,
+      },
     });
 
     return NextResponse.json(paymentMethod, { status: 201 });
   } catch (error) {
     console.error('Error creating payment method:', error);
     return NextResponse.json({ error: 'Ödeme yöntemi oluşturulamadı' }, { status: 500 });
+  }
+}
+
+export async function PUT(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { id, name, initialBalance } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: 'Ödeme yöntemi ID gerekli' }, { status: 400 });
+    }
+
+    const updateData: Record<string, unknown> = {};
+    if (name !== undefined) updateData.name = name.trim();
+    if (initialBalance !== undefined) updateData.initialBalance = parseFloat(initialBalance);
+
+    const paymentMethod = await db.paymentMethod.update({
+      where: { id },
+      data: updateData,
+    });
+
+    return NextResponse.json(paymentMethod);
+  } catch (error) {
+    console.error('Error updating payment method:', error);
+    return NextResponse.json({ error: 'Ödeme yöntemi güncellenemedi' }, { status: 500 });
   }
 }
 

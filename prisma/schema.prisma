@@ -22,6 +22,7 @@ model PaymentMethod {
   id                String           @id @default(cuid())
   name              String
   isDefault         Boolean          @default(false)
+  initialBalance    Float            @default(0)
   purchaseProducts  Product[]        @relation("ProductPurchasePayment")
   sales             Sale[]           @relation("SalePayment")
   expenses          Expense[]
