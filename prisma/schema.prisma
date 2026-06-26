@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Category {
@@ -22,7 +23,7 @@ model PaymentMethod {
   id                String           @id @default(cuid())
   name              String
   isDefault         Boolean          @default(false)
-  initialBalance    Float            @default(0)
+  initialBalance    Double           @default(0)
   purchaseProducts  Product[]        @relation("ProductPurchasePayment")
   sales             Sale[]           @relation("SalePayment")
   expenses          Expense[]
@@ -45,17 +46,17 @@ model Product {
   description       String?
   categoryId        String?
   category          Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  purchasePrice     Float
+  purchasePrice     Double
   purchaseDate      DateTime
   color             String?
   model             String?
   size              String?
   condition         String?
-  imageUrl          String?  // legacy file path, no longer used for new uploads
-  imageData         String?  // base64 encoded image stored directly in DB
+  imageUrl          String?
+  imageData         String?         @db.Text
   isListed          Boolean         @default(false)
   listedDate        DateTime?
-  status            String          @default("in_stock") // in_stock, listed, sold
+  status            String          @default("in_stock")
   purchasePaymentId String
   purchasePayment   PaymentMethod   @relation("ProductPurchasePayment", fields: [purchasePaymentId], references: [id])
   sale              Sale?
@@ -68,7 +69,7 @@ model Sale {
   id               String        @id @default(cuid())
   productId        String        @unique
   product          Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
-  salePrice        Float
+  salePrice        Double
   saleDate         DateTime
   salesChannelId   String
   salesChannel     SalesChannel  @relation(fields: [salesChannelId], references: [id])
@@ -82,12 +83,12 @@ model Sale {
 
 model Expense {
   id              String        @id @default(cuid())
-  amount          Float
+  amount          Double
   description     String
   date            DateTime
   paymentMethodId String
   paymentMethod   PaymentMethod @relation(fields: [paymentMethodId], references: [id])
-  type            String        @default("withdrawal") // withdrawal, expense
+  type            String        @default("savings")
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 }
@@ -96,7 +97,7 @@ model ProductExpense {
   id          String   @id @default(cuid())
   productId   String
   product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  amount      Float
+  amount      Double
   description String
   date        DateTime
   createdAt   DateTime @default(now())
