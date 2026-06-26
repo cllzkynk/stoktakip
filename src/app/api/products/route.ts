@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { logActivity } from '@/lib/activity-logger'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(req: NextRequest) {
@@ -67,6 +68,10 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
 
+    // Log activity
+    const userId = body.userId
+    if (userId) await logActivity(userId, 'product_create', { productId: data.id, name: data.name })
+
     return NextResponse.json(data, { status: 201 })
   } catch (error) {
     console.error('Error creating product:', error)
@@ -126,6 +131,10 @@ export async function PUT(req: NextRequest) {
 
     if (error) throw error
 
+    // Log activity
+    const userId = body.userId
+    if (userId) await logActivity(userId, 'product_update', { productId: id, name: data.name })
+
     return NextResponse.json(data)
   } catch (error) {
     console.error('Error updating product:', error)
@@ -147,6 +156,10 @@ export async function DELETE(req: NextRequest) {
     await supabase.from('ProductExpense').delete().eq('productId', id)
     const { error } = await supabase.from('Product').delete().eq('id', id)
     if (error) throw error
+
+    // Log activity
+    const userId = searchParams.get('userId')
+    if (userId) await logActivity(userId, 'product_delete', { productId: id })
 
     return NextResponse.json({ success: true })
   } catch (error) {

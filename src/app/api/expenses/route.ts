@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { logActivity } from '@/lib/activity-logger'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET() {
@@ -38,6 +39,10 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
 
+    // Log activity
+    const userId = body.userId
+    if (userId) await logActivity(userId, 'expense_create', { expenseId: data.id, amount: parseFloat(amount), description: description.trim(), type: validType })
+
     return NextResponse.json(data, { status: 201 })
   } catch (error) {
     console.error('Error creating expense:', error)
@@ -56,6 +61,10 @@ export async function DELETE(req: NextRequest) {
 
     const { error } = await supabase.from('Expense').delete().eq('id', id)
     if (error) throw error
+
+    // Log activity
+    const userId = searchParams.get('userId')
+    if (userId) await logActivity(userId, 'expense_delete', { expenseId: id })
 
     return NextResponse.json({ success: true })
   } catch (error) {

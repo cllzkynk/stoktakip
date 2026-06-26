@@ -1,23 +1,39 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Shield, Lock, AlertTriangle, Eye, EyeOff, LogIn } from 'lucide-react';
+import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import { Shield, Lock, User, AlertTriangle, Eye, EyeOff, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const MAX_ATTEMPTS = 10;
-const LOCKOUT_DURATION = 30 * 60 * 1000; // 30 minutes lockout
+const LOCKOUT_DURATION = 30 * 60 * 1000; // 30 minutes
 const STORAGE_KEY_AUTH = 'stok_takip_auth';
 const STORAGE_KEY_ATTEMPTS = 'stok_takip_attempts';
 const STORAGE_KEY_LOCKOUT = 'stok_takip_lockout';
 
+export interface AuthUser {
+  id: string;
+  username: string;
+  displayName: string;
+  role: 'admin' | 'user';
+}
+
 interface AuthState {
   authenticated: boolean;
   timestamp: number;
+  user: AuthUser;
+}
+
+const AuthContext = createContext<AuthUser | null>(null);
+
+export function useAuth() {
+  return useContext(AuthContext);
 }
 
 export default function PasswordGate({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -46,8 +62,9 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
       if (authData) {
         const auth: AuthState = JSON.parse(authData);
         // Check if auth is still valid (7 days)
-        if (Date.now() - auth.timestamp < 7 * 24 * 60 * 60 * 1000) {
+        if (Date.now() - auth.timestamp < 7 * 24 * 60 * 60 * 1000 && auth.user) {
           setIsAuthenticated(true);
+          setAuthUser(auth.user);
         } else {
           localStorage.removeItem(STORAGE_KEY_AUTH);
         }
@@ -56,8 +73,7 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
       // Get failed attempts count
       const attemptsData = localStorage.getItem(STORAGE_KEY_ATTEMPTS);
       if (attemptsData) {
-        const attempts = parseInt(attemptsData, 10);
-        setFailedAttempts(attempts);
+        setFailedAttempts(parseInt(attemptsData, 10));
       }
     } catch {
       // localStorage not available
@@ -68,7 +84,6 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
   // Update lockdown timer
   useEffect(() => {
     if (!isLocked) return;
-
     const interval = setInterval(() => {
       const lockoutData = localStorage.getItem(STORAGE_KEY_LOCKOUT);
       if (lockoutData) {
@@ -86,7 +101,6 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
         }
       }
     }, 1000);
-
     return () => clearInterval(interval);
   }, [isLocked]);
 
@@ -100,14 +114,14 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
       const res = await fetch('/api/auth/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       });
 
       const data = await res.json();
 
-      if (res.ok && data.success) {
-        // Success - save auth state
-        const authState: AuthState = { authenticated: true, timestamp: Date.now() };
+      if (res.ok && data.success && data.user) {
+        const user: AuthUser = data.user;
+        const authState: AuthState = { authenticated: true, timestamp: Date.now(), user };
         try {
           localStorage.setItem(STORAGE_KEY_AUTH, JSON.stringify(authState));
           localStorage.removeItem(STORAGE_KEY_ATTEMPTS);
@@ -115,29 +129,22 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
           // localStorage not available
         }
         setIsAuthenticated(true);
+        setAuthUser(user);
         setFailedAttempts(0);
       } else {
-        // Failed
         const newAttempts = failedAttempts + 1;
         setFailedAttempts(newAttempts);
-
         try {
           localStorage.setItem(STORAGE_KEY_ATTEMPTS, newAttempts.toString());
-        } catch {
-          // localStorage not available
-        }
+        } catch {}
 
         if (newAttempts >= MAX_ATTEMPTS) {
-          // Lock out
           try {
             localStorage.setItem(STORAGE_KEY_LOCKOUT, Date.now().toString());
-          } catch {
-            // localStorage not available
-          }
+          } catch {}
           setIsLocked(true);
-          setError(`Çok fazla hatalı deneme. ${MAX_ATTEMPTS} dakika bekleyin.`);
         } else {
-          setError(`Yanlış şifre! Kalan deneme: ${MAX_ATTEMPTS - newAttempts}`);
+          setError(data.error || `Yanlış giriş! Kalan deneme: ${MAX_ATTEMPTS - newAttempts}`);
         }
       }
     } catch {
@@ -145,7 +152,7 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
     }
 
     setPassword('');
-  }, [password, failedAttempts, isLocked]);
+  }, [username, password, failedAttempts, isLocked]);
 
   if (isLoading) {
     return (
@@ -158,8 +165,12 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
     );
   }
 
-  if (isAuthenticated) {
-    return <>{children}</>;
+  if (isAuthenticated && authUser) {
+    return (
+      <AuthContext.Provider value={authUser}>
+        {children}
+      </AuthContext.Provider>
+    );
   }
 
   return (
@@ -171,10 +182,10 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
             <Shield className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white mb-1">Stok Takip</h1>
-          <p className="text-slate-400 text-sm">Devam etmek için şifre girin</p>
+          <p className="text-slate-400 text-sm">Devam etmek için giriş yapın</p>
         </div>
 
-        {/* Lock form */}
+        {/* Login form */}
         <form onSubmit={handleSubmit} className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6 shadow-2xl">
           {isLocked ? (
             <div className="text-center py-4">
@@ -183,7 +194,7 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
               </div>
               <h2 className="text-lg font-semibold text-white mb-2">Hesap Kilitlendi</h2>
               <p className="text-slate-400 text-sm mb-4">
-                {MAX_ATTEMPTS} kez hatalı şifre girdiniz. Lütfen bekleyin.
+                {MAX_ATTEMPTS} kez hatalı giriş. Lütfen bekleyin.
               </p>
               <div className="text-3xl font-mono font-bold text-red-400">
                 {lockdownRemaining}
@@ -191,6 +202,21 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
             </div>
           ) : (
             <>
+              {/* Username */}
+              <div className="relative mb-3">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => { setUsername(e.target.value); setError(''); }}
+                  placeholder="Kullanıcı adı"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                  autoFocus
+                  autoComplete="username"
+                />
+              </div>
+
+              {/* Password */}
               <div className="relative mb-4">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <input
@@ -199,7 +225,6 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
                   onChange={(e) => { setPassword(e.target.value); setError(''); }}
                   placeholder="Şifre"
                   className="w-full bg-white/5 border border-white/10 rounded-xl pl-11 pr-12 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-                  autoFocus
                   autoComplete="current-password"
                 />
                 <button
@@ -243,9 +268,8 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
           )}
         </form>
 
-        {/* Footer hint */}
         <p className="text-center text-slate-600 text-xs mt-6">
-          Şifrenizi unuttuysanız uygulama yöneticisine başvurun
+          Şifrenizi unuttuysanız yöneticinize başvurun
         </p>
       </div>
     </div>

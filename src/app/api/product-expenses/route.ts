@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { logActivity } from '@/lib/activity-logger'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(req: NextRequest) {
@@ -43,6 +44,9 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
 
+    const userId = body.userId
+    if (userId) await logActivity(userId, 'product_expense_create', { expenseId: data.id, productId, amount: parseFloat(amount) })
+
     return NextResponse.json(data, { status: 201 })
   } catch (error) {
     console.error('Error creating product expense:', error)
@@ -61,6 +65,9 @@ export async function DELETE(req: NextRequest) {
 
     const { error } = await supabase.from('ProductExpense').delete().eq('id', id)
     if (error) throw error
+
+    const userId = searchParams.get('userId')
+    if (userId) await logActivity(userId, 'product_expense_delete', { expenseId: id })
 
     return NextResponse.json({ success: true })
   } catch (error) {

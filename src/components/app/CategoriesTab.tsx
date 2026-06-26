@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Plus, FolderOpen, Trash2, ChevronRight, FolderTree } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/components/app/PasswordGate';
 
 interface Category { id: string; name: string; parentId: string | null; children: Category[]; products?: { id: string }[]; }
 
@@ -17,6 +18,7 @@ interface Props { refreshKey: number; onRefresh: () => void; }
 
 export default function CategoriesTab({ refreshKey, onRefresh }: Props) {
   const { toast } = useToast();
+  const authUser = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [form, setForm] = useState({ name: '', parentId: '' });
@@ -38,7 +40,7 @@ export default function CategoriesTab({ refreshKey, onRefresh }: Props) {
       const res = await fetch('/api/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, parentId: form.parentId || null }),
+        body: JSON.stringify({ name: form.name, parentId: form.parentId || null, userId: authUser?.id }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
       toast({ title: 'Başarılı', description: 'Kategori eklendi' });
@@ -52,7 +54,7 @@ export default function CategoriesTab({ refreshKey, onRefresh }: Props) {
   const handleDelete = async (id: string) => {
     if (!confirm('Bu kategoriyi silmek istediğinize emin misiniz?')) return;
     try {
-      const res = await fetch(`/api/categories?id=${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/categories?id=${id}${authUser ? `&userId=${authUser.id}` : ''}`, { method: 'DELETE' });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
       toast({ title: 'Silindi', description: 'Kategori silindi' });
       fetchCategories();

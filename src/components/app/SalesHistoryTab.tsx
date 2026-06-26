@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { History, Trash2, Eye, Search, Package } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/components/app/PasswordGate';
 
 interface Sale {
   id: string;
@@ -28,6 +29,7 @@ interface Props { refreshKey: number; onRefresh: () => void; }
 
 export default function SalesHistoryTab({ refreshKey, onRefresh }: Props) {
   const { toast } = useToast();
+  const authUser = useAuth();
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -55,7 +57,7 @@ export default function SalesHistoryTab({ refreshKey, onRefresh }: Props) {
   const handleDeleteSale = async (id: string) => {
     if (!confirm('Bu satış kaydını silmek istediğinize emin misiniz? Ürün stoka geri dönecektir.')) return;
     try {
-      const res = await fetch(`/api/sales?id=${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/sales?id=${id}${authUser ? `&userId=${authUser.id}` : ''}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
       toast({ title: 'Silindi', description: 'Satış kaydı silindi, ürün stoka döndü' });
       setShowDetail(false);

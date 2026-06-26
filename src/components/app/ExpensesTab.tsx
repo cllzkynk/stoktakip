@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Plus, Banknote, Trash2, PiggyBank, Receipt } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/components/app/PasswordGate';
 
 interface PaymentMethod { id: string; name: string; }
 interface Expense { id: string; amount: number; description: string; date: string; paymentMethodId: string; type: string; paymentMethod: PaymentMethod; }
@@ -24,6 +25,7 @@ const TYPE_LABELS: Record<string, { label: string; color: string; icon: React.Re
 
 export default function ExpensesTab({ refreshKey, onRefresh }: Props) {
   const { toast } = useToast();
+  const authUser = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -47,7 +49,7 @@ export default function ExpensesTab({ refreshKey, onRefresh }: Props) {
       const res = await fetch('/api/expenses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, userId: authUser?.id }),
       });
       if (!res.ok) throw new Error();
       toast({ title: 'Başarılı', description: 'Gider kaydedildi' });
@@ -61,7 +63,7 @@ export default function ExpensesTab({ refreshKey, onRefresh }: Props) {
   const handleDelete = async (id: string) => {
     if (!confirm('Bu kaydı silmek istediğinize emin misiniz?')) return;
     try {
-      const res = await fetch(`/api/expenses?id=${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/expenses?id=${id}${authUser ? `&userId=${authUser.id}` : ''}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
       toast({ title: 'Silindi', description: 'Kayıt silindi' });
       fetchData();

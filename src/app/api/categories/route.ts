@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { logActivity } from '@/lib/activity-logger'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET() {
@@ -20,6 +21,10 @@ export async function POST(req: NextRequest) {
 
     const { data, error } = await supabase.from('Category').insert({ name: name.trim(), parentId: parentId || null }).select('*, children:Category(*)').single()
     if (error) throw error
+
+    const userId = body.userId
+    if (userId) await logActivity(userId, 'category_create', { categoryId: data.id, name: data.name })
+
     return NextResponse.json(data, { status: 201 })
   } catch (error) {
     console.error('Error creating category:', error)
@@ -38,6 +43,10 @@ export async function DELETE(req: NextRequest) {
 
     const { error } = await supabase.from('Category').delete().eq('id', id)
     if (error) throw error
+
+    const userId = searchParams.get('userId')
+    if (userId) await logActivity(userId, 'category_delete', { categoryId: id })
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error deleting category:', error)

@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { Plus, Search, Eye, Megaphone, ShoppingBag, Edit, Trash2, Image as ImageIcon, Package } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { compressImage, getBase64SizeKB } from '@/lib/image-compress';
+import { useAuth } from '@/components/app/PasswordGate';
 
 interface Category { id: string; name: string; parentId: string | null; children: Category[]; }
 interface PaymentMethod { id: string; name: string; }
@@ -40,6 +41,7 @@ interface Props {
 
 export default function InventoryTab({ refreshKey, onRefresh }: Props) {
   const { toast } = useToast();
+  const authUser = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
@@ -96,6 +98,7 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
         body: JSON.stringify({
           ...productForm,
           imageData: compressedImage,
+          userId: authUser?.id,
         }),
       });
       if (!res.ok) throw new Error();
@@ -126,6 +129,7 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
           condition: productForm.condition,
           purchasePaymentId: productForm.purchasePaymentId,
           imageData: compressedImage, // null if not changed, new base64 if changed
+          userId: authUser?.id,
         }),
       });
       if (!res.ok) throw new Error();
@@ -139,7 +143,7 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
   const handleDeleteProduct = async (id: string) => {
     if (!confirm('Bu ürünü silmek istediğinize emin misiniz?')) return;
     try {
-      const res = await fetch(`/api/products?id=${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/products?id=${id}${authUser ? `&userId=${authUser.id}` : ''}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
       toast({ title: 'Silindi', description: 'Ürün silindi' });
       setShowDetailDialog(false);
@@ -169,7 +173,7 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
       const res = await fetch('/api/sales', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...saleForm, productId: selectedProduct.id }),
+        body: JSON.stringify({ ...saleForm, productId: selectedProduct.id, userId: authUser?.id }),
       });
       if (!res.ok) throw new Error();
       toast({ title: 'Satış kaydedildi', description: `${selectedProduct.name} satıldı!` });

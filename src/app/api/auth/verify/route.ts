@@ -1,32 +1,60 @@
+import { supabase } from '@/lib/supabase'
+import { verifyPassword, hashPassword } from '@/lib/auth-utils'
+import { logActivity } from '@/lib/activity-logger'
 import { NextRequest, NextResponse } from 'next/server'
-import crypto from 'crypto'
 
+// Login
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { password } = body
+    const { username, password } = body
 
-    if (!password) {
-      return NextResponse.json({ error: 'Şifre gerekli' }, { status: 400 })
+    if (!username || !password) {
+      return NextResponse.json({ error: 'Kullanıcı adı ve şifre gerekli' }, { status: 400 })
     }
 
-    const appPassword = process.env.APP_PASSWORD
-    if (!appPassword) {
-      // If no password set in env, allow access
-      return NextResponse.json({ success: true })
+    // Find user
+    const { data: user, error } = await supabase
+      .from('User')
+      .select('*')
+      .eq('username', username)
+      .eq('isActive', true)
+      .single()
+
+    if (error || !user) {
+      return NextResponse.json({ error: 'Kullanıcı bulunamadı' }, { status: 401 })
     }
 
-    // Hash the provided password with SHA-256 and compare
-    const hashedInput = crypto.createHash('sha256').update(password).digest('hex')
-    const hashedExpected = crypto.createHash('sha256').update(appPassword).digest('hex')
-
-    if (hashedInput === hashedExpected) {
-      return NextResponse.json({ success: true })
-    } else {
+    // Check if password hash is placeholder (first time setup)
+    if (user.passwordHash === 'PLACEHOLDER_UPDATE_VIA_API') {
+      // Update with actual hash of the APP_PASSWORD env var
+      const appPassword = process.env.APP_PASSWORD || 'admin123'
+      const newHash = hashPassword(appPassword)
+      await supabase.from('User').update({ passwordHash: newHash }).eq('id', user.id)
+      // Now verify
+      if (!verifyPassword(password, newHash)) {
+        await logActivity(user.id, 'login_failed', { username })
+        return NextResponse.json({ error: 'Yanlış şifre' }, { status: 401 })
+      }
+    } else if (!verifyPassword(password, user.passwordHash)) {
+      await logActivity(user.id, 'login_failed', { username })
       return NextResponse.json({ error: 'Yanlış şifre' }, { status: 401 })
     }
+
+    // Success
+    await logActivity(user.id, 'login', { username })
+
+    return NextResponse.json({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        role: user.role,
+      }
+    })
   } catch (error) {
-    console.error('Error verifying password:', error)
+    console.error('Error verifying login:', error)
     return NextResponse.json({ error: 'Doğrulama hatası' }, { status: 500 })
   }
 }
