@@ -66,11 +66,15 @@ export default function CategoriesTab({ refreshKey, onRefresh }: Props) {
     setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
 
-  const flatCategories = (cats: Category[], prefix = ''): { id: string; name: string }[] => {
-    let result: { id: string; name: string }[] = [];
+  // Flatten categories with depth prefix for the select dropdown - unlimited depth
+  const flatCategories = (cats: Category[], prefix = '', depth = 0): { id: string; name: string; depth: number }[] => {
+    let result: { id: string; name: string; depth: number }[] = [];
     for (const cat of cats) {
-      result.push({ id: cat.id, name: prefix + cat.name });
-      if (cat.children?.length) result = result.concat(flatCategories(cat.children, prefix + cat.name + ' > '));
+      const indent = '　'.repeat(depth) + (depth > 0 ? '└ ' : '');
+      result.push({ id: cat.id, name: indent + cat.name, depth });
+      if (cat.children?.length) {
+        result = result.concat(flatCategories(cat.children, prefix + cat.name + ' > ', depth + 1));
+      }
     }
     return result;
   };
@@ -105,6 +109,8 @@ export default function CategoriesTab({ refreshKey, onRefresh }: Props) {
     );
   };
 
+  const flatList = flatCategories(categories);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -120,11 +126,15 @@ export default function CategoriesTab({ refreshKey, onRefresh }: Props) {
             <form onSubmit={handleAdd} className="space-y-3">
               <div><Label>Kategori Adı *</Label><Input value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} required /></div>
               <div><Label>Üst Kategori</Label>
-                <Select value={form.parentId} onValueChange={v => setForm(f => ({...f, parentId: v}))}>
+                <Select value={form.parentId} onValueChange={v => setForm(f => ({...f, parentId: v === '_none' ? '' : v}))}>
                   <SelectTrigger><SelectValue placeholder="Ana kategori (opsiyonel)" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="_none">Ana kategori</SelectItem>
-                    {flatCategories(categories).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                    <SelectItem value="_none">📁 Ana kategori (en üst seviye)</SelectItem>
+                    {flatList.map(c => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
