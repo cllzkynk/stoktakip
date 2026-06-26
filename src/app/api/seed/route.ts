@@ -11,8 +11,15 @@ export async function POST() {
           { name: 'Nakit', isDefault: true },
           { name: 'Wise' },
           { name: 'Vinted' },
+          { name: 'Banka Hesabı' },
         ],
       });
+    } else {
+      // Check if Banka Hesabı exists, add if not
+      const bankExists = await db.paymentMethod.findFirst({ where: { name: 'Banka Hesabı' } });
+      if (!bankExists) {
+        await db.paymentMethod.create({ data: { name: 'Banka Hesabı' } });
+      }
     }
 
     // Seed default sales channels
@@ -25,6 +32,16 @@ export async function POST() {
           { name: 'Facebook' },
         ],
       });
+    }
+
+    // Migrate old expense types to new types
+    const oldWithdrawals = await db.expense.findMany({ where: { type: 'withdrawal' } });
+    if (oldWithdrawals.length > 0) {
+      await db.expense.updateMany({ where: { type: 'withdrawal' }, data: { type: 'savings' } });
+    }
+    const oldExpenses = await db.expense.findMany({ where: { type: 'expense' } });
+    if (oldExpenses.length > 0) {
+      await db.expense.updateMany({ where: { type: 'expense' }, data: { type: 'extra_spending' } });
     }
 
     return NextResponse.json({ success: true, message: 'Varsayılan veriler oluşturuldu' });

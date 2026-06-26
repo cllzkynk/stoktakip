@@ -3,21 +3,23 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingCart, Megaphone, Wallet, ArrowDownToLine } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingCart, Megaphone, Wallet, PiggyBank, Receipt } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 interface Stats {
   totalSpent: number;
   totalRevenue: number;
   totalProfit: number;
   totalWithdrawn: number;
+  totalExtraSpending: number;
+  totalAllWithdrawn: number;
   avgProfit: number;
   inStockCount: number;
   listedCount: number;
   soldCount: number;
   totalProducts: number;
   inStockValue: number;
-  paymentMethodStats: { id: string; name: string; totalIn: number; totalOut: number; totalExpenses: number; balance: number }[];
+  paymentMethodStats: { id: string; name: string; totalIn: number; totalOut: number; totalExpenses: number; totalSavings: number; totalExtraSpending: number; balance: number }[];
   salesChannelStats: { id: string; name: string; totalSales: number; totalRevenue: number }[];
   topColors: [string, number][];
   topCategories: { name: string; count: number; revenue: number }[];
@@ -78,11 +80,35 @@ export default function StatisticsTab({ refreshKey }: Props) {
         </Card>
         <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200">
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-2"><ArrowDownToLine className="w-5 h-5 text-amber-600" /><span className="text-xs text-amber-600 font-medium">Çekilen Para</span></div>
+            <div className="flex items-center gap-2 mb-2"><PiggyBank className="w-5 h-5 text-amber-600" /><span className="text-xs text-amber-600 font-medium">Çekilen (Birikimde)</span></div>
             <p className="text-2xl font-bold text-amber-700">{fmt(stats.totalWithdrawn)}</p>
+            <p className="text-[10px] text-amber-500">Bende kalan</p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Withdrawn Money Breakdown */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><PiggyBank className="w-5 h-5 text-amber-500" /> Çekilen Para Detayı</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100 text-center">
+              <div className="flex items-center justify-center gap-1.5 mb-1"><PiggyBank className="w-4 h-4 text-emerald-600" /><span className="text-xs text-emerald-600 font-medium">Birikimde</span></div>
+              <p className="text-xl font-bold text-emerald-700">{fmt(stats.totalWithdrawn)}</p>
+              <p className="text-[10px] text-emerald-500 mt-0.5">Bende kalan para</p>
+            </div>
+            <div className="p-3 bg-red-50 rounded-lg border border-red-100 text-center">
+              <div className="flex items-center justify-center gap-1.5 mb-1"><Receipt className="w-4 h-4 text-red-500" /><span className="text-xs text-red-500 font-medium">Ek Harcama</span></div>
+              <p className="text-xl font-bold text-red-600">{fmt(stats.totalExtraSpending)}</p>
+              <p className="text-[10px] text-red-400 mt-0.5">Tamamen giden</p>
+            </div>
+            <div className="p-3 bg-amber-50 rounded-lg border border-amber-100 text-center">
+              <div className="flex items-center justify-center gap-1.5 mb-1"><TrendingDown className="w-4 h-4 text-amber-600" /><span className="text-xs text-amber-600 font-medium">Toplam Çekilen</span></div>
+              <p className="text-xl font-bold text-amber-700">{fmt(stats.totalAllWithdrawn)}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Inventory Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -144,10 +170,11 @@ export default function StatisticsTab({ refreshKey }: Props) {
                     Bakiye: {pm.balance >= 0 ? '+' : ''}{pm.balance.toFixed(2)} ₺
                   </Badge>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="grid grid-cols-4 gap-2 text-xs">
                   <div className="text-center"><span className="text-slate-500">Gelen</span><p className="font-semibold text-emerald-600">{pm.totalIn.toFixed(2)} ₺</p></div>
                   <div className="text-center"><span className="text-slate-500">Çıkan</span><p className="font-semibold text-red-500">{pm.totalOut.toFixed(2)} ₺</p></div>
-                  <div className="text-center"><span className="text-slate-500">Gider</span><p className="font-semibold text-amber-600">{pm.totalExpenses.toFixed(2)} ₺</p></div>
+                  <div className="text-center"><span className="text-emerald-600">Birikimde</span><p className="font-semibold text-emerald-700">{pm.totalSavings.toFixed(2)} ₺</p></div>
+                  <div className="text-center"><span className="text-red-500">Ek Harcama</span><p className="font-semibold text-red-600">{pm.totalExtraSpending.toFixed(2)} ₺</p></div>
                 </div>
               </div>
             ))}
@@ -162,10 +189,11 @@ export default function StatisticsTab({ refreshKey }: Props) {
                   })()}
                 </Badge>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="grid grid-cols-4 gap-2 text-xs">
                 <div className="text-center"><span className="text-emerald-600">Gelen</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalIn, 0).toFixed(2)} ₺</p></div>
                 <div className="text-center"><span className="text-emerald-600">Çıkan</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalOut, 0).toFixed(2)} ₺</p></div>
-                <div className="text-center"><span className="text-emerald-600">Gider</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalExpenses, 0).toFixed(2)} ₺</p></div>
+                <div className="text-center"><span className="text-emerald-600">Birikimde</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalSavings, 0).toFixed(2)} ₺</p></div>
+                <div className="text-center"><span className="text-emerald-600">Ek Harcama</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalExtraSpending, 0).toFixed(2)} ₺</p></div>
               </div>
             </div>
           </div>

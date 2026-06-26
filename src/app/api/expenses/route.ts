@@ -23,13 +23,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Zorunlu alanlar eksik' }, { status: 400 });
     }
 
+    // type: 'savings' (birikimde - bende kalan), 'extra_spending' (ek harcama - tamamen giden)
+    const validType = ['savings', 'extra_spending'].includes(type) ? type : 'savings';
+
     const expense = await db.expense.create({
       data: {
         amount: parseFloat(amount),
         description: description.trim(),
         date: new Date(date),
         paymentMethodId,
-        type: type || 'withdrawal',
+        type: validType,
       },
       include: { paymentMethod: true },
     });

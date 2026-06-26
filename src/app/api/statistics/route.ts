@@ -6,13 +6,18 @@ export async function GET() {
     // Totals
     const totalPurchases = await db.product.aggregate({ _sum: { purchasePrice: true } });
     const totalSales = await db.sale.aggregate({ _sum: { salePrice: true } });
-    const totalExpenses = await db.expense.aggregate({ _sum: { amount: true } });
     const totalProductExpenses = await db.productExpense.aggregate({ _sum: { amount: true } });
 
     const totalSpent = (totalPurchases._sum.purchasePrice || 0) + (totalProductExpenses._sum.amount || 0);
     const totalRevenue = totalSales._sum.salePrice || 0;
-    const totalWithdrawn = totalExpenses._sum.amount || 0;
     const totalProfit = totalRevenue - totalSpent;
+
+    // Expense breakdown: savings vs extra_spending
+    const savingsExpenses = await db.expense.aggregate({ where: { type: 'savings' }, _sum: { amount: true } });
+    const extraSpendingExpenses = await db.expense.aggregate({ where: { type: 'extra_spending' }, _sum: { amount: true } });
+    const totalWithdrawn = savingsExpenses._sum.amount || 0; // birikimde = bende kalan
+    const totalExtraSpending = extraSpendingExpenses._sum.amount || 0; // ek harcama = tamamen giden
+    const totalAllWithdrawn = totalWithdrawn + totalExtraSpending;
 
     // Product counts
     const inStockCount = await db.product.count({ where: { status: 'in_stock' } });
@@ -31,7 +36,7 @@ export async function GET() {
       include: {
         purchaseProducts: { select: { purchasePrice: true } },
         sales: { select: { salePrice: true } },
-        expenses: { select: { amount: true } },
+        expenses: { select: { amount: true, type: true } },
       },
     });
 
@@ -39,6 +44,8 @@ export async function GET() {
       const totalIn = pm.sales.reduce((sum, s) => sum + s.salePrice, 0);
       const totalOut = pm.purchaseProducts.reduce((sum, p) => sum + p.purchasePrice, 0);
       const totalExp = pm.expenses.reduce((sum, e) => sum + e.amount, 0);
+      const totalSavings = pm.expenses.filter(e => e.type === 'savings').reduce((sum, e) => sum + e.amount, 0);
+      const totalExtraSpending = pm.expenses.filter(e => e.type === 'extra_spending').reduce((sum, e) => sum + e.amount, 0);
       const balance = totalIn - totalOut - totalExp;
       return {
         id: pm.id,
@@ -46,6 +53,8 @@ export async function GET() {
         totalIn,
         totalOut,
         totalExpenses: totalExp,
+        totalSavings,
+        totalExtraSpending,
         balance,
       };
     });
@@ -136,6 +145,8 @@ export async function GET() {
       totalRevenue,
       totalProfit,
       totalWithdrawn,
+      totalExtraSpending,
+      totalAllWithdrawn,
       avgProfit,
       inStockCount,
       listedCount,
