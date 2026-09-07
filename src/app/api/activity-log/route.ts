@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
 // Get activity logs (admin only)
@@ -13,21 +13,30 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Yetkilendirme gerekli' }, { status: 401 })
     }
 
-    // Check if requesting user is admin
-    const { data: requestingUser } = await supabase.from('User').select('role').eq('id', userId).single()
+    const requestingUser = await db.user.findUnique({ where: { id: userId } })
     if (!requestingUser || requestingUser.role !== 'admin') {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
-    const { data, error, count } = await supabase
-      .from('ActivityLog')
-      .select('*, user:User(id, username, displayName)', { count: 'exact' })
-      .order('createdAt', { ascending: false })
-      .range(offset, offset + limit - 1)
+    const [logs, total] = await Promise.all([
+      db.activityLog.findMany({
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              displayName: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+      }),
+      db.activityLog.count(),
+    ])
 
-    if (error) throw error
-
-    return NextResponse.json({ logs: data || [], total: count || 0 })
+    return NextResponse.json({ logs, total })
   } catch (error) {
     console.error('Error fetching activity logs:', error)
     return NextResponse.json({ error: 'Aktivite kayıtları yüklenemedi' }, { status: 500 })

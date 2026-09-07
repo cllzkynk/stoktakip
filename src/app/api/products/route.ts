@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db'
 import { logActivity } from '@/lib/activity-logger'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -9,22 +9,30 @@ export async function GET(req: NextRequest) {
     const categoryId = searchParams.get('categoryId')
     const search = searchParams.get('search')
 
-    let query = supabase.from('Product').select('*, category:Category(*), purchasePayment:PaymentMethod!purchasePaymentId(*), sale:Sale(*, salesChannel:SalesChannel(*), salePayment:PaymentMethod!salePaymentId(*)), expenses:ProductExpense(*)').order('createdAt', { ascending: false })
-
-    if (status && status !== 'all') {
-      query = query.eq('status', status)
-    }
-    if (categoryId) {
-      query = query.eq('categoryId', categoryId)
-    }
+    const where: Record<string, unknown> = {}
+    if (status && status !== 'all') where.status = status
+    if (categoryId) where.categoryId = categoryId
     if (search) {
-      query = query.or(`name.ilike.%${search}%,color.ilike.%${search}%,model.ilike.%${search}%,description.ilike.%${search}%`)
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { color: { contains: search, mode: 'insensitive' } },
+        { model: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ]
     }
 
-    const { data, error } = await query
-    if (error) throw error
+    const products = await db.product.findMany({
+      where,
+      include: {
+        category: true,
+        purchasePayment: true,
+        sale: { include: { salesChannel: true, salePayment: true } },
+        expenses: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    })
 
-    return NextResponse.json(data || [])
+    return NextResponse.json(products)
   } catch (error) {
     console.error('Error fetching products:', error)
     return NextResponse.json({ error: 'Ürünler yüklenemedi' }, { status: 500 })
@@ -34,45 +42,45 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, description, categoryId, purchasePrice, purchaseDate, color, model, size, condition, purchasePaymentId, imageData } = body
+    const { name, description, categoryId, purchasePrice, purchaseDate, color, model, size, condition, purchasePaymentId, imageData, userId } = body
 
     if (!name || !purchasePrice || !purchasePaymentId) {
       return NextResponse.json({ error: 'Zorunlu alanlar eksik' }, { status: 400 })
     }
 
     // Get next product number
-    const { data: lastProduct } = await supabase
-      .from('Product')
-      .select('productNumber')
-      .order('productNumber', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
+    const lastProduct = await db.product.findFirst({
+      orderBy: { productNumber: 'desc' },
+      select: { productNumber: true },
+    })
     const productNumber = (lastProduct?.productNumber || 0) + 1
 
-    const { data, error } = await supabase.from('Product').insert({
-      productNumber,
-      name: name.trim(),
-      description: description?.trim() || null,
-      categoryId: categoryId || null,
-      purchasePrice: parseFloat(purchasePrice),
-      purchaseDate: new Date(purchaseDate).toISOString(),
-      color: color?.trim() || null,
-      model: model?.trim() || null,
-      size: size?.trim() || null,
-      condition: condition?.trim() || null,
-      imageData: imageData || null,
-      purchasePaymentId,
-      status: 'in_stock',
-    }).select('*, category:Category(*), purchasePayment:PaymentMethod!purchasePaymentId(*), sale:Sale(*)').single()
+    const product = await db.product.create({
+      data: {
+        productNumber,
+        name: name.trim(),
+        description: description?.trim() || null,
+        categoryId: categoryId || null,
+        purchasePrice: parseFloat(purchasePrice),
+        purchaseDate: new Date(purchaseDate),
+        color: color?.trim() || null,
+        model: model?.trim() || null,
+        size: size?.trim() || null,
+        condition: condition?.trim() || null,
+        imageData: imageData || null,
+        purchasePaymentId,
+        status: 'in_stock',
+      },
+      include: {
+        category: true,
+        purchasePayment: true,
+        sale: true,
+      },
+    })
 
-    if (error) throw error
+    if (userId) await logActivity(userId, 'product_create', { productId: product.id, name: product.name })
 
-    // Log activity
-    const userId = body.userId
-    if (userId) await logActivity(userId, 'product_create', { productId: data.id, name: data.name })
-
-    return NextResponse.json(data, { status: 201 })
+    return NextResponse.json(product, { status: 201 })
   } catch (error) {
     console.error('Error creating product:', error)
     return NextResponse.json({ error: 'Ürün oluşturulamadı' }, { status: 500 })
@@ -82,14 +90,13 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json()
-    const { id, name, description, categoryId, purchasePrice, purchaseDate, color, model, size, condition, isListed, status, purchasePaymentId, imageData } = body
+    const { id, name, description, categoryId, purchasePrice, purchaseDate, color, model, size, condition, isListed, status, purchasePaymentId, imageData, userId } = body
 
     if (!id) {
       return NextResponse.json({ error: 'Ürün ID gerekli' }, { status: 400 })
     }
 
-    // Check existing product
-    const { data: existing } = await supabase.from('Product').select('*').eq('id', id).single()
+    const existing = await db.product.findUnique({ where: { id } })
     if (!existing) {
       return NextResponse.json({ error: 'Ürün bulunamadı' }, { status: 404 })
     }
@@ -99,7 +106,7 @@ export async function PUT(req: NextRequest) {
     if (description !== undefined) updateData.description = description?.trim() || null
     if (categoryId !== undefined) updateData.categoryId = categoryId || null
     if (purchasePrice !== undefined) updateData.purchasePrice = parseFloat(purchasePrice)
-    if (purchaseDate) updateData.purchaseDate = new Date(purchaseDate).toISOString()
+    if (purchaseDate) updateData.purchaseDate = new Date(purchaseDate)
     if (color !== undefined) updateData.color = color?.trim() || null
     if (model !== undefined) updateData.model = model?.trim() || null
     if (size !== undefined) updateData.size = size?.trim() || null
@@ -107,7 +114,7 @@ export async function PUT(req: NextRequest) {
     if (isListed !== undefined) {
       updateData.isListed = isListed === 'true' || isListed === true
       if ((isListed === 'true' || isListed === true) && !existing.isListed) {
-        updateData.listedDate = new Date().toISOString()
+        updateData.listedDate = new Date()
         updateData.status = 'listed'
       } else if (isListed === 'false' || isListed === false) {
         updateData.listedDate = null
@@ -116,26 +123,23 @@ export async function PUT(req: NextRequest) {
     }
     if (status !== undefined) updateData.status = status
     if (purchasePaymentId) updateData.purchasePaymentId = purchasePaymentId
-
-    // Handle image update - only update if new imageData provided
     if (imageData !== undefined && imageData !== null) {
       updateData.imageData = imageData
     }
 
-    const { data, error } = await supabase
-      .from('Product')
-      .update(updateData)
-      .eq('id', id)
-      .select('*, category:Category(*), purchasePayment:PaymentMethod!purchasePaymentId(*), sale:Sale(*, salesChannel:SalesChannel(*), salePayment:PaymentMethod!salePaymentId(*))')
-      .single()
+    const product = await db.product.update({
+      where: { id },
+      data: updateData,
+      include: {
+        category: true,
+        purchasePayment: true,
+        sale: { include: { salesChannel: true, salePayment: true } },
+      },
+    })
 
-    if (error) throw error
+    if (userId) await logActivity(userId, 'product_update', { productId: id, name: product.name })
 
-    // Log activity
-    const userId = body.userId
-    if (userId) await logActivity(userId, 'product_update', { productId: id, name: data.name })
-
-    return NextResponse.json(data)
+    return NextResponse.json(product)
   } catch (error) {
     console.error('Error updating product:', error)
     return NextResponse.json({ error: 'Ürün güncellenemedi' }, { status: 500 })
@@ -146,19 +150,16 @@ export async function DELETE(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const id = searchParams.get('id')
+    const userId = searchParams.get('userId')
 
     if (!id) {
       return NextResponse.json({ error: 'Ürün ID gerekli' }, { status: 400 })
     }
 
-    // Delete related sales and expenses first
-    await supabase.from('Sale').delete().eq('productId', id)
-    await supabase.from('ProductExpense').delete().eq('productId', id)
-    const { error } = await supabase.from('Product').delete().eq('id', id)
-    if (error) throw error
+    await db.sale.deleteMany({ where: { productId: id } })
+    await db.productExpense.deleteMany({ where: { productId: id } })
+    await db.product.delete({ where: { id } })
 
-    // Log activity
-    const userId = searchParams.get('userId')
     if (userId) await logActivity(userId, 'product_delete', { productId: id })
 
     return NextResponse.json({ success: true })

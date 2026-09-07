@@ -1,45 +1,63 @@
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
 export async function POST() {
   try {
     // Seed default payment methods
-    const { count: pmCount } = await supabase.from('PaymentMethod').select('id', { count: 'exact', head: true })
-
-    if (pmCount === 0) {
-      await supabase.from('PaymentMethod').insert([
-        { name: 'Nakit', isDefault: true },
-        { name: 'Wise' },
-        { name: 'Vinted' },
-        { name: 'Banka Hesabı' },
-      ])
+    const existingPM = await db.paymentMethod.count()
+    if (existingPM === 0) {
+      await db.paymentMethod.createMany({
+        data: [
+          { name: 'Nakit', isDefault: true },
+          { name: 'Wise' },
+          { name: 'Vinted' },
+          { name: 'Banka Hesabı' },
+        ],
+      })
     } else {
-      // Check if Banka Hesabı exists
-      const { data: bankExists } = await supabase.from('PaymentMethod').select('id').eq('name', 'Banka Hesabı').maybeSingle()
+      // Check if Banka Hesabı exists, add if not
+      const bankExists = await db.paymentMethod.findFirst({ where: { name: 'Banka Hesabı' } })
       if (!bankExists) {
-        await supabase.from('PaymentMethod').insert({ name: 'Banka Hesabı' })
+        await db.paymentMethod.create({ data: { name: 'Banka Hesabı' } })
       }
     }
 
     // Seed default sales channels
-    const { count: scCount } = await supabase.from('SalesChannel').select('id', { count: 'exact', head: true })
-    if (scCount === 0) {
-      await supabase.from('SalesChannel').insert([
-        { name: 'Vinted' },
-        { name: 'Tori' },
-        { name: 'Facebook' },
-      ])
+    const existingSC = await db.salesChannel.count()
+    if (existingSC === 0) {
+      await db.salesChannel.createMany({
+        data: [
+          { name: 'Vinted' },
+          { name: 'Tori' },
+          { name: 'Facebook' },
+        ],
+      })
     }
 
     // Migrate old expense types
-    const { data: oldWithdrawals } = await supabase.from('Expense').select('id').eq('type', 'withdrawal')
-    if (oldWithdrawals && oldWithdrawals.length > 0) {
-      await supabase.from('Expense').update({ type: 'savings' }).eq('type', 'withdrawal')
+    const oldWithdrawals = await db.expense.findMany({ where: { type: 'withdrawal' } })
+    if (oldWithdrawals.length > 0) {
+      await db.expense.updateMany({ where: { type: 'withdrawal' }, data: { type: 'savings' } })
     }
 
-    const { data: oldExpenses } = await supabase.from('Expense').select('id').eq('type', 'expense')
-    if (oldExpenses && oldExpenses.length > 0) {
-      await supabase.from('Expense').update({ type: 'extra_spending' }).eq('type', 'expense')
+    const oldExpenses = await db.expense.findMany({ where: { type: 'expense' } })
+    if (oldExpenses.length > 0) {
+      await db.expense.updateMany({ where: { type: 'expense' }, data: { type: 'extra_spending' } })
+    }
+
+    // Create default admin user if no users exist
+    const userCount = await db.user.count()
+    if (userCount === 0) {
+      const { hashPassword } = await import('@/lib/auth-utils')
+      const appPassword = process.env.APP_PASSWORD || 'admin123'
+      await db.user.create({
+        data: {
+          username: 'admin',
+          passwordHash: hashPassword(appPassword),
+          displayName: 'Yönetici',
+          role: 'admin',
+        },
+      })
     }
 
     return NextResponse.json({ success: true, message: 'Varsayılan veriler oluşturuldu' })

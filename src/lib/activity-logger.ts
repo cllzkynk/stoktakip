@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { db } from './db'
 
 export type ActionType =
   | 'product_create'
@@ -33,10 +33,12 @@ export async function logActivity(
   details?: Record<string, unknown>
 ): Promise<void> {
   try {
-    await supabase.from('ActivityLog').insert({
-      userId,
-      action,
-      details: details ? JSON.stringify(details) : null,
+    await db.activityLog.create({
+      data: {
+        userId,
+        action,
+        details: details ? JSON.stringify(details) : null,
+      },
     })
   } catch (error) {
     console.error('Failed to log activity:', error)
