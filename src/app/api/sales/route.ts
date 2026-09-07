@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { productId, salePrice, saleDate, salesChannelId, salePaymentId, buyerInfo, notes, userId } = body
+    const { productId, salePrice, saleDate, salesChannelId, salePaymentId, buyerInfo, notes, quantity, userId } = body
 
     if (!productId || !salePrice || !saleDate || !salesChannelId || !salePaymentId) {
       return NextResponse.json({ error: 'Zorunlu alanlar eksik' }, { status: 400 })
@@ -15,10 +15,14 @@ export async function POST(req: NextRequest) {
     if (!product) {
       return NextResponse.json({ error: 'Ürün bulunamadı' }, { status: 404 })
     }
-    if (product.status === 'sold') {
-      return NextResponse.json({ error: 'Bu ürün zaten satılmış' }, { status: 400 })
+
+    const saleQty = parseInt(quantity) > 0 ? parseInt(quantity) : 1
+
+    if (product.quantity < saleQty) {
+      return NextResponse.json({ error: `Yeterli stok yok! Mevcut: ${product.quantity} adet` }, { status: 400 })
     }
 
+    // Create sale record
     const sale = await db.sale.create({
       data: {
         productId,
@@ -28,6 +32,7 @@ export async function POST(req: NextRequest) {
         salePaymentId,
         buyerInfo: buyerInfo?.trim() || null,
         notes: notes?.trim() || null,
+        quantity: saleQty,
       },
       include: {
         product: true,
@@ -36,12 +41,20 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    // Reduce product quantity
+    const newQty = product.quantity - saleQty
+    const newStatus = newQty === 0 ? 'sold' : (product.status === 'listed' ? 'listed' : 'in_stock')
+
     await db.product.update({
       where: { id: productId },
-      data: { status: 'sold', isListed: false },
+      data: {
+        quantity: newQty,
+        status: newStatus,
+        isListed: newQty === 0 ? false : product.isListed,
+      },
     })
 
-    if (userId) await logActivity(userId, 'sale_create', { saleId: sale.id, productId, salePrice: parseFloat(salePrice) })
+    if (userId) await logActivity(userId, 'sale_create', { saleId: sale.id, productId, salePrice: parseFloat(salePrice), quantity: saleQty })
 
     return NextResponse.json(sale, { status: 201 })
   } catch (error) {
@@ -82,10 +95,19 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Satış bulunamadı' }, { status: 404 })
     }
 
-    await db.product.update({
-      where: { id: sale.productId },
-      data: { status: 'in_stock', isListed: false },
-    })
+    // Restore product quantity
+    const product = await db.product.findUnique({ where: { id: sale.productId } })
+    if (product) {
+      const restoredQty = product.quantity + sale.quantity
+      await db.product.update({
+        where: { id: sale.productId },
+        data: {
+          quantity: restoredQty,
+          status: 'in_stock',
+          isListed: false,
+        },
+      })
+    }
 
     await db.sale.delete({ where: { id } })
 

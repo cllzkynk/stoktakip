@@ -71,7 +71,7 @@ export default function StatisticsTab({ refreshKey }: Props) {
     );
   }
 
-  const fmt = (n: number) => n.toFixed(2) + ' ₺';
+  const fmt = (n: number) => n.toFixed(2) + ' €';
 
   const channelData = stats.salesChannelStats.map(ch => ({ name: ch.name, value: ch.totalRevenue }));
   const colorData = stats.topColors.map(([name, count]) => ({ name, value: count }));
@@ -168,7 +168,7 @@ export default function StatisticsTab({ refreshKey }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(value: number) => `${value.toFixed(2)} ₺`} />
+                <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
                 <Bar dataKey="purchases" name="Alış" fill="#ef4444" radius={[4,4,0,0]} />
                 <Bar dataKey="sales" name="Satış" fill="#10b981" radius={[4,4,0,0]} />
               </BarChart>
@@ -187,15 +187,15 @@ export default function StatisticsTab({ refreshKey }: Props) {
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-semibold text-sm">{pm.name}</span>
                   <Badge variant={pm.balance >= 0 ? 'secondary' : 'destructive'} className="text-xs">
-                    Bakiye: {pm.balance >= 0 ? '+' : ''}{pm.balance.toFixed(2)} ₺
+                    Bakiye: {pm.balance >= 0 ? '+' : ''}{pm.balance.toFixed(2)} €
                   </Badge>
                 </div>
                 <div className="grid grid-cols-5 gap-2 text-xs">
-                  <div className="text-center"><span className="text-violet-500">Başlangıç</span><p className="font-semibold text-violet-600">{pm.initialBalance.toFixed(2)} ₺</p></div>
-                  <div className="text-center"><span className="text-slate-500">Gelen</span><p className="font-semibold text-emerald-600">{pm.totalIn.toFixed(2)} ₺</p></div>
-                  <div className="text-center"><span className="text-slate-500">Çıkan</span><p className="font-semibold text-red-500">{pm.totalOut.toFixed(2)} ₺</p></div>
-                  <div className="text-center"><span className="text-emerald-600">Birikimde</span><p className="font-semibold text-emerald-700">{pm.totalSavings.toFixed(2)} ₺</p></div>
-                  <div className="text-center"><span className="text-red-500">Ek Harcama</span><p className="font-semibold text-red-600">{pm.totalExtraSpending.toFixed(2)} ₺</p></div>
+                  <div className="text-center"><span className="text-violet-500">Başlangıç</span><p className="font-semibold text-violet-600">{pm.initialBalance.toFixed(2)} €</p></div>
+                  <div className="text-center"><span className="text-slate-500">Gelen</span><p className="font-semibold text-emerald-600">{pm.totalIn.toFixed(2)} €</p></div>
+                  <div className="text-center"><span className="text-slate-500">Çıkan</span><p className="font-semibold text-red-500">{pm.totalOut.toFixed(2)} €</p></div>
+                  <div className="text-center"><span className="text-emerald-600">Birikimde</span><p className="font-semibold text-emerald-700">{pm.totalSavings.toFixed(2)} €</p></div>
+                  <div className="text-center"><span className="text-red-500">Ek Harcama</span><p className="font-semibold text-red-600">{pm.totalExtraSpending.toFixed(2)} €</p></div>
                 </div>
               </div>
             ))}
@@ -204,15 +204,15 @@ export default function StatisticsTab({ refreshKey }: Props) {
               <div className="flex items-center justify-between mb-2">
                 <span className="font-bold text-sm text-emerald-800">TOPLAM</span>
                 <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs">
-                  Bakiye: {stats.totalBalance >= 0 ? '+' : ''}{stats.totalBalance.toFixed(2)} ₺
+                  Bakiye: {stats.totalBalance >= 0 ? '+' : ''}{stats.totalBalance.toFixed(2)} €
                 </Badge>
               </div>
               <div className="grid grid-cols-5 gap-2 text-xs">
-                <div className="text-center"><span className="text-violet-600">Başlangıç</span><p className="font-bold text-violet-700">{stats.totalInitialBalance.toFixed(2)} ₺</p></div>
-                <div className="text-center"><span className="text-emerald-600">Gelen</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalIn, 0).toFixed(2)} ₺</p></div>
-                <div className="text-center"><span className="text-emerald-600">Çıkan</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalOut, 0).toFixed(2)} ₺</p></div>
-                <div className="text-center"><span className="text-emerald-600">Birikimde</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalSavings, 0).toFixed(2)} ₺</p></div>
-                <div className="text-center"><span className="text-emerald-600">Ek Harcama</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalExtraSpending, 0).toFixed(2)} ₺</p></div>
+                <div className="text-center"><span className="text-violet-600">Başlangıç</span><p className="font-bold text-violet-700">{stats.totalInitialBalance.toFixed(2)} €</p></div>
+                <div className="text-center"><span className="text-emerald-600">Gelen</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalIn, 0).toFixed(2)} €</p></div>
+                <div className="text-center"><span className="text-emerald-600">Çıkan</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalOut, 0).toFixed(2)} €</p></div>
+                <div className="text-center"><span className="text-emerald-600">Birikimde</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalSavings, 0).toFixed(2)} €</p></div>
+                <div className="text-center"><span className="text-emerald-600">Ek Harcama</span><p className="font-bold text-emerald-700">{stats.paymentMethodStats.reduce((s,pm) => s + pm.totalExtraSpending, 0).toFixed(2)} €</p></div>
               </div>
             </div>
           </div>
@@ -231,7 +231,7 @@ export default function StatisticsTab({ refreshKey }: Props) {
                   <Pie data={channelData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
                     {channelData.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
                   </Pie>
-                  <Tooltip formatter={(value: number) => `${value.toFixed(2)} ₺`} />
+                  <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
                 </PieChart>
               </ResponsiveContainer>
             </CardContent>
@@ -271,7 +271,7 @@ export default function StatisticsTab({ refreshKey }: Props) {
                   </div>
                   <div className="text-right">
                     <span className="text-sm font-bold">{cat.count} adet</span>
-                    <span className="text-xs text-slate-500 ml-2">{cat.revenue.toFixed(2)} ₺</span>
+                    <span className="text-xs text-slate-500 ml-2">{cat.revenue.toFixed(2)} €</span>
                   </div>
                 </div>
               ))}

@@ -243,7 +243,7 @@ export default function SettingsTab({ refreshKey, onRefresh }: Props) {
       <Card className="bg-gradient-to-br from-violet-50 to-violet-100/50 border-violet-200">
         <CardContent className="p-4">
           <div className="flex items-center gap-2 mb-1"><Wallet className="w-5 h-5 text-violet-600" /><span className="text-sm text-violet-600 font-medium">Toplam Başlangıç Bakiyesi</span></div>
-          <p className="text-2xl font-bold text-violet-700">{totalInitialBalance.toFixed(2)} ₺</p>
+          <p className="text-2xl font-bold text-violet-700">{totalInitialBalance.toFixed(2)} €</p>
         </CardContent>
       </Card>
 
@@ -451,7 +451,7 @@ export default function SettingsTab({ refreshKey, onRefresh }: Props) {
                 {editingBalance[pm.id] !== undefined ? (
                   <div className="flex items-center gap-1 flex-1">
                     <Input type="number" step="0.01" value={editingBalance[pm.id]} onChange={e => setEditingBalance(prev => ({ ...prev, [pm.id]: e.target.value }))} className="h-7 text-xs w-28" />
-                    <span className="text-xs text-slate-400">₺</span>
+                    <span className="text-xs text-slate-400">€</span>
                     <Button size="sm" className="h-7 px-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => updateInitialBalance(pm.id)} disabled={savingBalance[pm.id]}>
                       <Save className="w-3 h-3" />
                     </Button>
@@ -461,7 +461,7 @@ export default function SettingsTab({ refreshKey, onRefresh }: Props) {
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 flex-1">
-                    <span className="text-sm font-semibold text-violet-700">{(pm.initialBalance || 0).toFixed(2)} ₺</span>
+                    <span className="text-sm font-semibold text-violet-700">{(pm.initialBalance || 0).toFixed(2)} €</span>
                     <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setEditingBalance(prev => ({ ...prev, [pm.id]: (pm.initialBalance || 0).toString() }))}>
                       <Edit className="w-3 h-3 mr-1" /> Düzenle
                     </Button>

@@ -56,9 +56,10 @@ model Product {
   isListed          Boolean         @default(false)
   listedDate        DateTime?
   status            String          @default("in_stock")
+  quantity          Int             @default(1)
   purchasePaymentId String
   purchasePayment   PaymentMethod   @relation("ProductPurchasePayment", fields: [purchasePaymentId], references: [id])
-  sale              Sale?
+  sales             Sale[]
   expenses          ProductExpense[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
@@ -66,7 +67,7 @@ model Product {
 
 model Sale {
   id               String        @id @default(cuid())
-  productId        String        @unique
+  productId        String
   product          Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
   salePrice        Float
   saleDate         DateTime
@@ -76,6 +77,7 @@ model Sale {
   salePayment      PaymentMethod @relation("SalePayment", fields: [salePaymentId], references: [id])
   buyerInfo        String?
   notes            String?
+  quantity         Int           @default(1)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 }

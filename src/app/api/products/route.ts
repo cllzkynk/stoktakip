@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
       include: {
         category: true,
         purchasePayment: true,
-        sale: { include: { salesChannel: true, salePayment: true } },
+        sales: { include: { salesChannel: true, salePayment: true } },
         expenses: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -42,18 +42,18 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, description, categoryId, purchasePrice, purchaseDate, color, model, size, condition, purchasePaymentId, imageData, userId } = body
+    const { name, description, categoryId, purchasePrice, purchaseDate, color, model, size, condition, purchasePaymentId, imageData, quantity, userId } = body
 
     if (!name || !purchasePrice || !purchasePaymentId) {
       return NextResponse.json({ error: 'Zorunlu alanlar eksik' }, { status: 400 })
     }
 
-    // Get next product number
     const lastProduct = await db.product.findFirst({
       orderBy: { productNumber: 'desc' },
       select: { productNumber: true },
     })
     const productNumber = (lastProduct?.productNumber || 0) + 1
+    const qty = parseInt(quantity) > 0 ? parseInt(quantity) : 1
 
     const product = await db.product.create({
       data: {
@@ -70,15 +70,16 @@ export async function POST(req: NextRequest) {
         imageData: imageData || null,
         purchasePaymentId,
         status: 'in_stock',
+        quantity: qty,
       },
       include: {
         category: true,
         purchasePayment: true,
-        sale: true,
+        sales: true,
       },
     })
 
-    if (userId) await logActivity(userId, 'product_create', { productId: product.id, name: product.name })
+    if (userId) await logActivity(userId, 'product_create', { productId: product.id, name: product.name, quantity: qty })
 
     return NextResponse.json(product, { status: 201 })
   } catch (error) {
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json()
-    const { id, name, description, categoryId, purchasePrice, purchaseDate, color, model, size, condition, isListed, status, purchasePaymentId, imageData, userId } = body
+    const { id, name, description, categoryId, purchasePrice, purchaseDate, color, model, size, condition, isListed, status, purchasePaymentId, imageData, quantity, userId } = body
 
     if (!id) {
       return NextResponse.json({ error: 'Ürün ID gerekli' }, { status: 400 })
@@ -111,11 +112,21 @@ export async function PUT(req: NextRequest) {
     if (model !== undefined) updateData.model = model?.trim() || null
     if (size !== undefined) updateData.size = size?.trim() || null
     if (condition !== undefined) updateData.condition = condition?.trim() || null
+    if (quantity !== undefined) {
+      const qty = parseInt(quantity) > 0 ? parseInt(quantity) : 1
+      updateData.quantity = qty
+      // Auto-update status based on quantity
+      if (qty === 0) {
+        updateData.status = 'sold'
+      } else if (existing.status === 'sold' && qty > 0) {
+        updateData.status = 'in_stock'
+      }
+    }
     if (isListed !== undefined) {
       updateData.isListed = isListed === 'true' || isListed === true
       if ((isListed === 'true' || isListed === true) && !existing.isListed) {
         updateData.listedDate = new Date()
-        updateData.status = 'listed'
+        if (existing.status === 'in_stock') updateData.status = 'listed'
       } else if (isListed === 'false' || isListed === false) {
         updateData.listedDate = null
         if (existing.status === 'listed') updateData.status = 'in_stock'
@@ -133,7 +144,7 @@ export async function PUT(req: NextRequest) {
       include: {
         category: true,
         purchasePayment: true,
-        sale: { include: { salesChannel: true, salePayment: true } },
+        sales: { include: { salesChannel: true, salePayment: true } },
       },
     })
 

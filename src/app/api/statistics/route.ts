@@ -3,13 +3,18 @@ import { NextResponse } from 'next/server'
 
 export async function GET() {
   try {
-    // Totals
-    const totalPurchases = await db.product.aggregate({ _sum: { purchasePrice: true } })
-    const totalSales = await db.sale.aggregate({ _sum: { salePrice: true } })
-    const totalProductExpenses = await db.productExpense.aggregate({ _sum: { amount: true } })
+    // Totals - purchase total = sum(purchasePrice * quantity)
+    const products = await db.product.findMany({ select: { purchasePrice: true, quantity: true } })
+    const totalPurchases = products.reduce((sum, p) => sum + (p.purchasePrice * p.quantity), 0)
 
-    const totalSpent = (totalPurchases._sum.purchasePrice || 0) + (totalProductExpenses._sum.amount || 0)
-    const totalRevenue = totalSales._sum.salePrice || 0
+    const sales = await db.sale.findMany({ select: { salePrice: true, quantity: true } })
+    const totalSalesRevenue = sales.reduce((sum, s) => sum + (s.salePrice * s.quantity), 0)
+
+    const totalProductExpensesAgg = await db.productExpense.aggregate({ _sum: { amount: true } })
+    const totalProductExpenses = totalProductExpensesAgg._sum.amount || 0
+
+    const totalSpent = totalPurchases + totalProductExpenses
+    const totalRevenue = totalSalesRevenue
     const totalProfit = totalRevenue - totalSpent
 
     // Expense breakdown
@@ -25,24 +30,25 @@ export async function GET() {
     const soldCount = await db.product.count({ where: { status: 'sold' } })
     const totalProducts = await db.product.count()
 
-    // In stock value
-    const inStockValue = await db.product.aggregate({
+    // In stock value - sum(purchasePrice * quantity) for in_stock + listed
+    const inStockProducts = await db.product.findMany({
       where: { status: { in: ['in_stock', 'listed'] } },
-      _sum: { purchasePrice: true },
+      select: { purchasePrice: true, quantity: true },
     })
+    const inStockValue = inStockProducts.reduce((sum, p) => sum + (p.purchasePrice * p.quantity), 0)
 
     // Payment method breakdown
     const paymentMethods = await db.paymentMethod.findMany({
       include: {
-        purchaseProducts: { select: { purchasePrice: true } },
-        sales: { select: { salePrice: true } },
+        purchaseProducts: { select: { purchasePrice: true, quantity: true } },
+        sales: { select: { salePrice: true, quantity: true } },
         expenses: { select: { amount: true, type: true } },
       },
     })
 
     const paymentMethodStats = paymentMethods.map(pm => {
-      const totalIn = pm.sales.reduce((sum, s) => sum + s.salePrice, 0)
-      const totalOut = pm.purchaseProducts.reduce((sum, p) => sum + p.purchasePrice, 0)
+      const totalIn = pm.sales.reduce((sum, s) => sum + (s.salePrice * s.quantity), 0)
+      const totalOut = pm.purchaseProducts.reduce((sum, p) => sum + (p.purchasePrice * p.quantity), 0)
       const totalExp = pm.expenses.reduce((sum, e) => sum + e.amount, 0)
       const totalSavings = pm.expenses.filter(e => e.type === 'savings').reduce((sum, e) => sum + e.amount, 0)
       const totalExtraSpending = pm.expenses.filter(e => e.type === 'extra_spending').reduce((sum, e) => sum + e.amount, 0)
@@ -63,14 +69,14 @@ export async function GET() {
 
     // Sales channel breakdown
     const salesChannels = await db.salesChannel.findMany({
-      include: { sales: { select: { salePrice: true } } },
+      include: { sales: { select: { salePrice: true, quantity: true } } },
     })
 
     const salesChannelStats = salesChannels.map(sc => ({
       id: sc.id,
       name: sc.name,
-      totalSales: sc.sales.length,
-      totalRevenue: sc.sales.reduce((sum, s) => sum + s.salePrice, 0),
+      totalSales: sc.sales.reduce((sum, s) => sum + s.quantity, 0),
+      totalRevenue: sc.sales.reduce((sum, s) => sum + (s.salePrice * s.quantity), 0),
     }))
 
     // Monthly stats (last 6 months)
@@ -78,11 +84,11 @@ export async function GET() {
     const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1)
     const monthlySales = await db.sale.findMany({
       where: { saleDate: { gte: sixMonthsAgo } },
-      select: { saleDate: true, salePrice: true },
+      select: { saleDate: true, salePrice: true, quantity: true },
     })
     const monthlyPurchases = await db.product.findMany({
       where: { purchaseDate: { gte: sixMonthsAgo } },
-      select: { purchaseDate: true, purchasePrice: true },
+      select: { purchaseDate: true, purchasePrice: true, quantity: true },
     })
 
     // Top colors
@@ -101,7 +107,7 @@ export async function GET() {
     // Top categories
     const soldWithCategory = await db.product.findMany({
       where: { status: 'sold', categoryId: { not: null } },
-      include: { category: true, sale: true },
+      include: { category: true, sales: true },
     })
     const categoryStats: Record<string, { name: string; count: number; revenue: number }> = {}
     soldWithCategory.forEach(p => {
@@ -110,15 +116,16 @@ export async function GET() {
           categoryStats[p.category.id] = { name: p.category.name, count: 0, revenue: 0 }
         }
         categoryStats[p.category.id].count += 1
-        categoryStats[p.category.id].revenue += p.sale?.salePrice || 0
+        categoryStats[p.category.id].revenue += p.sales.reduce((sum, s) => sum + (s.salePrice * s.quantity), 0)
       }
     })
     const topCategories = Object.values(categoryStats)
       .sort((a, b) => b.count - a.count)
       .slice(0, 10)
 
-    // Average profit per item
-    const avgProfit = soldCount > 0 ? totalProfit / soldCount : 0
+    // Average profit per item (per individual item sold, not per product)
+    const totalItemsSold = sales.reduce((sum, s) => sum + s.quantity, 0)
+    const avgProfit = totalItemsSold > 0 ? totalProfit / totalItemsSold : 0
 
     // Monthly breakdown
     const monthNames = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
@@ -130,10 +137,10 @@ export async function GET() {
 
       const monthPurchases = monthlyPurchases
         .filter(p => new Date(p.purchaseDate) >= d && new Date(p.purchaseDate) <= monthEnd)
-        .reduce((sum, p) => sum + p.purchasePrice, 0)
+        .reduce((sum, p) => sum + (p.purchasePrice * p.quantity), 0)
       const monthSales = monthlySales
         .filter(s => new Date(s.saleDate) >= d && new Date(s.saleDate) <= monthEnd)
-        .reduce((sum, s) => sum + s.salePrice, 0)
+        .reduce((sum, s) => sum + (s.salePrice * s.quantity), 0)
 
       monthlyBreakdown.push({ month: monthLabel, purchases: monthPurchases, sales: monthSales })
     }
@@ -152,7 +159,7 @@ export async function GET() {
       listedCount,
       soldCount,
       totalProducts,
-      inStockValue: inStockValue._sum.purchasePrice || 0,
+      inStockValue,
       paymentMethodStats,
       salesChannelStats,
       topColors,

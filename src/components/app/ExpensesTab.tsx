@@ -96,21 +96,21 @@ export default function ExpensesTab({ refreshKey, onRefresh }: Props) {
         <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1"><PiggyBank className="w-4 h-4 text-emerald-600" /><span className="text-xs text-emerald-600 font-medium">Çekilen Para (Birikimde)</span></div>
-            <p className="text-xl font-bold text-emerald-700">{totalSavings.toFixed(2)} ₺</p>
+            <p className="text-xl font-bold text-emerald-700">{totalSavings.toFixed(2)} €</p>
             <p className="text-[10px] text-emerald-500 mt-0.5">Bende kalan para</p>
           </CardContent>
         </Card>
         <Card className="bg-gradient-to-br from-red-50 to-red-100/50 border-red-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1"><Receipt className="w-4 h-4 text-red-500" /><span className="text-xs text-red-500 font-medium">Ek Harcama</span></div>
-            <p className="text-xl font-bold text-red-600">{totalExtraSpending.toFixed(2)} ₺</p>
+            <p className="text-xl font-bold text-red-600">{totalExtraSpending.toFixed(2)} €</p>
             <p className="text-[10px] text-red-400 mt-0.5">Tamamen giden</p>
           </CardContent>
         </Card>
         <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1"><Banknote className="w-4 h-4 text-amber-600" /><span className="text-xs text-amber-600 font-medium">Toplam Çekilen</span></div>
-            <p className="text-xl font-bold text-amber-700">{totalAll.toFixed(2)} ₺</p>
+            <p className="text-xl font-bold text-amber-700">{totalAll.toFixed(2)} €</p>
           </CardContent>
         </Card>
       </div>
@@ -160,7 +160,7 @@ export default function ExpensesTab({ refreshKey, onRefresh }: Props) {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2"><Banknote className="w-4 h-4 text-amber-500" /> {group.name}</CardTitle>
-              <Badge variant="secondary" className="text-xs">{group.total.toFixed(2)} ₺</Badge>
+              <Badge variant="secondary" className="text-xs">{group.total.toFixed(2)} €</Badge>
             </div>
           </CardHeader>
           <CardContent>
@@ -170,14 +170,14 @@ export default function ExpensesTab({ refreshKey, onRefresh }: Props) {
                 <PiggyBank className="w-4 h-4 text-emerald-600" />
                 <div>
                   <p className="text-[10px] text-emerald-600">Birikimde</p>
-                  <p className="text-sm font-bold text-emerald-700">{group.totalSavings.toFixed(2)} ₺</p>
+                  <p className="text-sm font-bold text-emerald-700">{group.totalSavings.toFixed(2)} €</p>
                 </div>
               </div>
               <div className="flex items-center gap-2 p-2 bg-red-50 rounded-lg border border-red-100">
                 <Receipt className="w-4 h-4 text-red-500" />
                 <div>
                   <p className="text-[10px] text-red-500">Ek Harcama</p>
-                  <p className="text-sm font-bold text-red-600">{group.totalExtraSpending.toFixed(2)} ₺</p>
+                  <p className="text-sm font-bold text-red-600">{group.totalExtraSpending.toFixed(2)} €</p>
                 </div>
               </div>
             </div>
@@ -196,7 +196,7 @@ export default function ExpensesTab({ refreshKey, onRefresh }: Props) {
                       <span className="text-xs text-slate-400">{new Date(exp.date).toLocaleDateString('tr-TR')}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm text-red-500">-{exp.amount.toFixed(2)} ₺</span>
+                      <span className="font-semibold text-sm text-red-500">-{exp.amount.toFixed(2)} €</span>
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-red-500" onClick={() => handleDelete(exp.id)}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>

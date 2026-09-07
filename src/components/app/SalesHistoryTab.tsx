@@ -20,6 +20,7 @@ interface Sale {
   salePaymentId: string;
   buyerInfo?: string;
   notes?: string;
+  quantity?: number;
   product: { id: string; productNumber: number; name: string; purchasePrice: number; color?: string; model?: string; imageUrl?: string; imageData?: string; category?: { name: string } };
   salesChannel: { id: string; name: string };
   salePayment: { id: string; name: string };
@@ -99,13 +100,13 @@ export default function SalesHistoryTab({ refreshKey, onRefresh }: Props) {
         <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-200">
           <CardContent className="p-4">
             <span className="text-xs text-emerald-600">Toplam Ciro</span>
-            <p className="text-xl font-bold text-emerald-700">{totalRevenue.toFixed(2)} ₺</p>
+            <p className="text-xl font-bold text-emerald-700">{totalRevenue.toFixed(2)} €</p>
           </CardContent>
         </Card>
         <Card className={`bg-gradient-to-br ${totalProfit >= 0 ? 'from-teal-50 to-teal-100/50 border-teal-200' : 'from-red-50 to-red-100/50 border-red-200'}`}>
           <CardContent className="p-4">
             <span className={`text-xs ${totalProfit >= 0 ? 'text-teal-600' : 'text-red-500'}`}>Toplam Kar</span>
-            <p className={`text-xl font-bold ${totalProfit >= 0 ? 'text-teal-700' : 'text-red-600'}`}>{totalProfit >= 0 ? '+' : ''}{totalProfit.toFixed(2)} ₺</p>
+            <p className={`text-xl font-bold ${totalProfit >= 0 ? 'text-teal-700' : 'text-red-600'}`}>{totalProfit >= 0 ? '+' : ''}{totalProfit.toFixed(2)} €</p>
           </CardContent>
         </Card>
       </div>
@@ -123,7 +124,7 @@ export default function SalesHistoryTab({ refreshKey, onRefresh }: Props) {
       ) : (
         <div className="space-y-3">
           {filteredSales.map(sale => {
-            const profit = sale.salePrice - sale.product.purchasePrice;
+            const profit = (sale.salePrice * (sale.quantity || 1)) - (sale.product.purchasePrice * (sale.quantity || 1));
             return (
               <Card key={sale.id} className="hover:shadow-md transition-shadow">
                 <CardContent className="p-4">
@@ -146,9 +147,10 @@ export default function SalesHistoryTab({ refreshKey, onRefresh }: Props) {
                         {sale.product.category && <span>• {sale.product.category.name}</span>}
                       </div>
                       <div className="flex items-center gap-4 mt-2">
-                        <div><span className="text-xs text-slate-400">Alış</span><p className="text-sm font-semibold text-slate-600">{sale.product.purchasePrice.toFixed(2)} ₺</p></div>
-                        <div><span className="text-xs text-slate-400">Satış</span><p className="text-sm font-semibold text-emerald-600">{sale.salePrice.toFixed(2)} ₺</p></div>
-                        <div><span className="text-xs text-slate-400">Kar</span><p className={`text-sm font-bold ${profit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{profit >= 0 ? '+' : ''}{profit.toFixed(2)} ₺</p></div>
+                        <div><span className="text-xs text-slate-400">Alış</span><p className="text-sm font-semibold text-slate-600">{sale.product.purchasePrice.toFixed(2)} €</p></div>
+                        <div><span className="text-xs text-slate-400">Satış</span><p className="text-sm font-semibold text-emerald-600">{sale.salePrice.toFixed(2)} €{sale.quantity > 1 && <span className="text-xs text-slate-400"> × {sale.quantity}</span>}</p></div>
+                        <div><span className="text-xs text-slate-400">Toplam</span><p className="text-sm font-bold text-emerald-700">{(sale.salePrice * sale.quantity).toFixed(2)} €</p></div>
+                        <div><span className="text-xs text-slate-400">Kar</span><p className={`text-sm font-bold ${profit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{profit >= 0 ? '+' : ''}{profit.toFixed(2)} €</p></div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
@@ -176,12 +178,14 @@ export default function SalesHistoryTab({ refreshKey, onRefresh }: Props) {
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div><span className="text-slate-500">Ürün:</span> <span className="font-semibold">{selectedSale.product.name}</span></div>
                 <div><span className="text-slate-500">ID:</span> #{selectedSale.product.productNumber}</div>
-                <div><span className="text-slate-500">Satış Fiyatı:</span> <span className="font-bold text-emerald-600">{selectedSale.salePrice.toFixed(2)} ₺</span></div>
-                <div><span className="text-slate-500">Alış Fiyatı:</span> {selectedSale.product.purchasePrice.toFixed(2)} ₺</div>
+                <div><span className="text-slate-500">Satış Fiyatı:</span> <span className="font-bold text-emerald-600">{selectedSale.salePrice.toFixed(2)} €</span></div>
+                <div><span className="text-slate-500">Adet:</span> <span className="font-bold">{selectedSale.quantity || 1}</span></div>
+                <div><span className="text-slate-500">Toplam:</span> <span className="font-bold text-emerald-700">{(selectedSale.salePrice * (selectedSale.quantity || 1)).toFixed(2)} €</span></div>
+                <div><span className="text-slate-500">Alış Fiyatı:</span> {selectedSale.product.purchasePrice.toFixed(2)} €</div>
                 <div><span className="text-slate-500">Kanal:</span> {selectedSale.salesChannel.name}</div>
                 <div><span className="text-slate-500">Ödeme:</span> {selectedSale.salePayment.name}</div>
                 <div><span className="text-slate-500">Tarih:</span> {new Date(selectedSale.saleDate).toLocaleDateString('tr-TR')}</div>
-                <div><span className="text-slate-500">Kar:</span> <span className={`font-bold ${selectedSale.salePrice - selectedSale.product.purchasePrice >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{(selectedSale.salePrice - selectedSale.product.purchasePrice).toFixed(2)} ₺</span></div>
+                <div><span className="text-slate-500">Kar:</span> <span className={`font-bold ${selectedSale.salePrice - selectedSale.product.purchasePrice >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>{((selectedSale.salePrice - selectedSale.product.purchasePrice) * (selectedSale.quantity || 1)).toFixed(2)} €</span></div>
               </div>
               {selectedSale.buyerInfo && <div><span className="text-slate-500 text-sm">Alıcı:</span> <span className="text-sm">{selectedSale.buyerInfo}</span></div>}
               {selectedSale.notes && <div><span className="text-slate-500 text-sm">Notlar:</span> <p className="text-sm">{selectedSale.notes}</p></div>}

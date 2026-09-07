@@ -19,7 +19,7 @@ import { useAuth } from '@/components/app/PasswordGate';
 interface Category { id: string; name: string; parentId: string | null; children: Category[]; }
 interface PaymentMethod { id: string; name: string; }
 interface Sale { id: string; salePrice: number; saleDate: string; salesChannelId: string; salePaymentId: string; buyerInfo?: string; notes?: string; salesChannel: { id: string; name: string }; salePayment: { id: string; name: string }; }
-interface Product { id: string; productNumber: number; name: string; description?: string; categoryId?: string; category?: Category; purchasePrice: number; purchaseDate: string; color?: string; model?: string; size?: string; condition?: string; imageUrl?: string; imageData?: string; isListed: boolean; listedDate?: string; status: string; purchasePaymentId: string; purchasePayment: PaymentMethod; sale?: Sale; expenses: { id: string; amount: number; description: string; date: string }[]; }
+interface Product { id: string; productNumber: number; name: string; description?: string; categoryId?: string; category?: Category; purchasePrice: number; purchaseDate: string; color?: string; model?: string; size?: string; condition?: string; imageUrl?: string; imageData?: string; isListed: boolean; listedDate?: string; status: string; quantity?: number; purchasePaymentId: string; purchasePayment: PaymentMethod; sale?: Sale; sales?: Sale[]; expenses: { id: string; amount: number; description: string; date: string }[]; }
 
 // Get product image src - prefers imageData (base64 in DB), falls back to imageUrl (file path)
 // For sold products older than 7 days, shows reduced quality indicator
@@ -27,8 +27,8 @@ const getProductImage = (product: Product) => product.imageData || product.image
 
 // Check if a sold product's image should be displayed in low quality (7+ days since sale)
 const isOldSoldProduct = (product: Product): boolean => {
-  if (product.status !== 'sold' || !product.sale) return false;
-  const saleDate = new Date(product.sale.saleDate);
+  if (product.status !== 'sold' || !product.sales || product.sales.length === 0) return false;
+  const saleDate = new Date(product.sales[0].saleDate);
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   return saleDate < sevenDaysAgo;
@@ -58,11 +58,11 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
   const [imageSize, setImageSize] = useState<number>(0);
 
   // Sale form
-  const [saleForm, setSaleForm] = useState({ salePrice: '', saleDate: new Date().toISOString().split('T')[0], salesChannelId: '', salePaymentId: '', buyerInfo: '', notes: '' });
+  const [saleForm, setSaleForm] = useState({ salePrice: '', saleDate: new Date().toISOString().split('T')[0], salesChannelId: '', salePaymentId: '', buyerInfo: '', notes: '', quantity: '1' });
 
   // Add/Edit form
   const [productForm, setProductForm] = useState({
-    name: '', description: '', categoryId: '', purchasePrice: '', purchaseDate: new Date().toISOString().split('T')[0], color: '', model: '', size: '', condition: '', purchasePaymentId: '',
+    name: '', description: '', categoryId: '', purchasePrice: '', purchaseDate: new Date().toISOString().split('T')[0], color: '', model: '', size: '', condition: '', purchasePaymentId: '', quantity: '1',
   });
 
   const fetchData = async () => {
@@ -99,6 +99,7 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
           ...productForm,
           imageData: compressedImage,
           userId: authUser?.id,
+          quantity: productForm.quantity,
         }),
       });
       if (!res.ok) throw new Error();
@@ -130,6 +131,7 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
           purchasePaymentId: productForm.purchasePaymentId,
           imageData: compressedImage, // null if not changed, new base64 if changed
           userId: authUser?.id,
+          quantity: productForm.quantity,
         }),
       });
       if (!res.ok) throw new Error();
@@ -178,13 +180,13 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
       if (!res.ok) throw new Error();
       toast({ title: 'Satış kaydedildi', description: `${selectedProduct.name} satıldı!` });
       setShowSaleDialog(false);
-      setSaleForm({ salePrice: '', saleDate: new Date().toISOString().split('T')[0], salesChannelId: '', salePaymentId: '', buyerInfo: '', notes: '' });
+      setSaleForm({ salePrice: '', saleDate: new Date().toISOString().split('T')[0], salesChannelId: '', salePaymentId: '', buyerInfo: '', notes: '', quantity: '1' });
       onRefresh();
     } catch { toast({ title: 'Hata', description: 'Satış kaydedilemedi', variant: 'destructive' }); }
   };
 
   const resetProductForm = () => {
-    setProductForm({ name: '', description: '', categoryId: '', purchasePrice: '', purchaseDate: new Date().toISOString().split('T')[0], color: '', model: '', size: '', condition: '', purchasePaymentId: '' });
+    setProductForm({ name: '', description: '', categoryId: '', purchasePrice: '', purchaseDate: new Date().toISOString().split('T')[0], color: '', model: '', size: '', condition: '', purchasePaymentId: '', quantity: '1' });
     setCompressedImage(null);
     setImageSize(0);
     setImagePreview(null);
@@ -203,6 +205,7 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
       size: product.size || '',
       condition: product.condition || '',
       purchasePaymentId: product.purchasePaymentId,
+      quantity: (product.quantity || 1).toString(),
     });
     setImagePreview(getProductImage(product));
     setCompressedImage(null); // will be set if user picks a new image
@@ -235,7 +238,9 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
     return <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-xs">Stokta</Badge>;
   };
 
-  const profit = selectedProduct?.sale ? selectedProduct.sale.salePrice - selectedProduct.purchasePrice - (selectedProduct.expenses?.reduce((s, e) => s + e.amount, 0) || 0) : 0;
+  const profit = selectedProduct?.sales && selectedProduct.sales.length > 0
+    ? selectedProduct.sales.reduce((sum, s) => sum + (s.salePrice * s.quantity), 0) - (selectedProduct.purchasePrice * (selectedProduct.quantity || 1)) - (selectedProduct.expenses?.reduce((s, e) => s + e.amount, 0) || 0)
+    : 0;
 
   return (
     <div className="space-y-4">
@@ -274,7 +279,8 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
                     <SelectContent>{flatCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div><Label>Alış Fiyatı *</Label><Input type="number" step="0.01" value={productForm.purchasePrice} onChange={e => setProductForm(p => ({...p, purchasePrice: e.target.value}))} required /></div>
+                <div><Label>Alış Fiyatı * (€)</Label><Input type="number" step="0.01" value={productForm.purchasePrice} onChange={e => setProductForm(p => ({...p, purchasePrice: e.target.value}))} required /></div>
+                <div><Label>Adet *</Label><Input type="number" min="1" step="1" value={productForm.quantity} onChange={e => setProductForm(p => ({...p, quantity: e.target.value}))} required /><p className="text-[10px] text-slate-400 mt-1">Toplam alış fiyatı: {(parseFloat(productForm.purchasePrice || '0') * parseInt(productForm.quantity || '1')).toFixed(2)} €</p></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Alış Tarihi *</Label><Input type="date" value={productForm.purchaseDate} onChange={e => setProductForm(p => ({...p, purchaseDate: e.target.value}))} required /></div>
@@ -379,20 +385,28 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
                   {product.model && <span>• {product.model}</span>}
                 </div>
                 <div className="flex items-center justify-between mt-3">
-                  <div>
-                    <span className="text-lg font-bold text-slate-800">{product.purchasePrice.toFixed(2)} ₺</span>
-                    <span className="text-xs text-slate-400 ml-1">alış</span>
+                  <div className="flex items-center gap-2">
+                    <div>
+                      <span className="text-lg font-bold text-slate-800">{product.purchasePrice.toFixed(2)} €</span>
+                      <span className="text-xs text-slate-400 ml-1">alış</span>
+                    </div>
+                    {(product.quantity || 1) > 1 && (
+                      <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">{product.quantity} adet</Badge>
+                    )}
+                    {(product.quantity || 1) === 0 && (
+                      <Badge variant="secondary" className="bg-slate-100 text-slate-500 border-slate-200 text-xs">tükendi</Badge>
+                    )}
                   </div>
-                  {product.sale && (
+                  {product.sales && product.sales.length > 0 && (
                     <div className="text-right">
-                      <span className="text-lg font-bold text-emerald-600">{product.sale.salePrice.toFixed(2)} ₺</span>
+                      <span className="text-lg font-bold text-emerald-600">{product.sales.reduce((s, sale) => s + sale.salePrice * sale.quantity, 0).toFixed(2)} €</span>
                       <span className="text-xs text-slate-400 ml-1">satış</span>
                     </div>
                   )}
                 </div>
-                {product.sale && (
-                  <div className={`text-xs font-semibold mt-1 ${product.sale.salePrice - product.purchasePrice >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                    {product.sale.salePrice - product.purchasePrice >= 0 ? '+' : ''}{(product.sale.salePrice - product.purchasePrice).toFixed(2)} ₺ kar
+                {product.sales && product.sales.length > 0 && (
+                  <div className={`text-xs font-semibold mt-1 ${product.sales.reduce((s, sale) => s + sale.salePrice * sale.quantity, 0) - product.purchasePrice * (product.quantity || 1) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {product.sales.reduce((s, sale) => s + sale.salePrice * sale.quantity, 0) - product.purchasePrice * (product.quantity || 1) >= 0 ? '+' : ''}{(product.sales.reduce((s, sale) => s + sale.salePrice * sale.quantity, 0) - product.purchasePrice * (product.quantity || 1)).toFixed(2)} € kar
                   </div>
                 )}
                 <Separator className="my-2" />
@@ -428,11 +442,14 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
           {selectedProduct && (
             <div className="mb-3 p-3 bg-slate-50 rounded-lg">
               <p className="font-semibold">{selectedProduct.name}</p>
-              <p className="text-sm text-slate-500">Alış: {selectedProduct.purchasePrice.toFixed(2)} ₺</p>
+              <p className="text-sm text-slate-500">Alış: {selectedProduct.purchasePrice.toFixed(2)} € • Stok: {selectedProduct.quantity || 1} adet</p>
             </div>
           )}
           <form onSubmit={handleSellProduct} className="space-y-3">
-            <div><Label>Satış Fiyatı *</Label><Input type="number" step="0.01" value={saleForm.salePrice} onChange={e => setSaleForm(f => ({...f, salePrice: e.target.value}))} required /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Satış Fiyatı * (adet)</Label><Input type="number" step="0.01" value={saleForm.salePrice} onChange={e => setSaleForm(f => ({...f, salePrice: e.target.value}))} required /></div>
+              <div><Label>Adet *</Label><Input type="number" min="1" max={selectedProduct?.quantity || 1} step="1" value={saleForm.quantity} onChange={e => setSaleForm(f => ({...f, quantity: e.target.value}))} required /><p className="text-[10px] text-slate-400 mt-1">Toplam: {(parseFloat(saleForm.salePrice || '0') * parseInt(saleForm.quantity || '1')).toFixed(2)} €</p></div>
+            </div>
             <div><Label>Satış Tarihi *</Label><Input type="date" value={saleForm.saleDate} onChange={e => setSaleForm(f => ({...f, saleDate: e.target.value}))} required /></div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Satış Kanalı *</Label>
@@ -469,7 +486,8 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
                 <div><span className="text-slate-500">Durum:</span> {getStatusBadge(selectedProduct)}</div>
                 <div><span className="text-slate-500">Ad:</span> <span className="font-semibold">{selectedProduct.name}</span></div>
                 <div><span className="text-slate-500">Kategori:</span> {selectedProduct.category?.name || '-'}</div>
-                <div><span className="text-slate-500">Alış Fiyatı:</span> <span className="font-bold">{selectedProduct.purchasePrice.toFixed(2)} ₺</span></div>
+                <div><span className="text-slate-500">Alış Fiyatı:</span> <span className="font-bold">{selectedProduct.purchasePrice.toFixed(2)} €</span></div>
+                <div><span className="text-slate-500">Adet (stok):</span> <span className="font-bold">{selectedProduct.quantity || 1}</span></div>
                 <div><span className="text-slate-500">Alış Tarihi:</span> {new Date(selectedProduct.purchaseDate).toLocaleDateString('tr-TR')}</div>
                 <div><span className="text-slate-500">Renk:</span> {selectedProduct.color || '-'}</div>
                 <div><span className="text-slate-500">Model:</span> {selectedProduct.model || '-'}</div>
@@ -481,17 +499,24 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
               {selectedProduct.description && (
                 <div><span className="text-slate-500 text-sm">Açıklama:</span><p className="text-sm mt-1">{selectedProduct.description}</p></div>
               )}
-              {selectedProduct.sale && (
+              {selectedProduct.sales && selectedProduct.sales.length > 0 && (
                 <>
                   <Separator />
                   <div className="bg-emerald-50 p-3 rounded-lg">
-                    <h4 className="font-semibold text-emerald-800 mb-2">Satış Bilgileri</h4>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div><span className="text-emerald-600">Satış Fiyatı:</span> <span className="font-bold">{selectedProduct.sale.salePrice.toFixed(2)} ₺</span></div>
-                      <div><span className="text-emerald-600">Satış Tarihi:</span> {new Date(selectedProduct.sale.saleDate).toLocaleDateString('tr-TR')}</div>
-                      <div><span className="text-emerald-600">Kanal:</span> {selectedProduct.sale.salesChannel?.name}</div>
-                      <div><span className="text-emerald-600">Ödeme:</span> {selectedProduct.sale.salePayment?.name}</div>
-                      <div className="col-span-2"><span className="text-emerald-600">Kar:</span> <span className={`font-bold text-lg ${profit >= 0 ? 'text-emerald-700' : 'text-red-500'}`}>{profit >= 0 ? '+' : ''}{profit.toFixed(2)} ₺</span></div>
+                    <h4 className="font-semibold text-emerald-800 mb-2">Satış Bilgileri ({selectedProduct.sales.length} satış)</h4>
+                    {selectedProduct.sales.map(sale => (
+                      <div key={sale.id} className="mb-2 pb-2 border-b border-emerald-100 last:border-0 last:mb-0 last:pb-0">
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div><span className="text-emerald-600">Satış Fiyatı:</span> <span className="font-bold">{sale.salePrice.toFixed(2)} € {sale.quantity > 1 && <span className="text-xs">× {sale.quantity}</span>}</span></div>
+                          <div><span className="text-emerald-600">Toplam:</span> <span className="font-bold">{(sale.salePrice * sale.quantity).toFixed(2)} €</span></div>
+                          <div><span className="text-emerald-600">Satış Tarihi:</span> {new Date(sale.saleDate).toLocaleDateString('tr-TR')}</div>
+                          <div><span className="text-emerald-600">Kanal:</span> {sale.salesChannel?.name}</div>
+                          <div><span className="text-emerald-600">Ödeme:</span> {sale.salePayment?.name}</div>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="mt-2 pt-2 border-t border-emerald-200">
+                      <div><span className="text-emerald-600">Toplam Kar:</span> <span className={`font-bold text-lg ${profit >= 0 ? 'text-emerald-700' : 'text-red-500'}`}>{profit >= 0 ? '+' : ''}{profit.toFixed(2)} €</span></div>
                     </div>
                   </div>
                 </>
@@ -504,7 +529,7 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
                     {selectedProduct.expenses.map(exp => (
                       <div key={exp.id} className="flex justify-between text-sm py-1 border-b border-slate-100">
                         <span>{exp.description}</span>
-                        <span className="font-semibold">{exp.amount.toFixed(2)} ₺</span>
+                        <span className="font-semibold">{exp.amount.toFixed(2)} €</span>
                       </div>
                     ))}
                   </div>
@@ -535,7 +560,10 @@ export default function InventoryTab({ refreshKey, onRefresh }: Props) {
                   <SelectContent>{flatCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div><Label>Alış Fiyatı *</Label><Input type="number" step="0.01" value={productForm.purchasePrice} onChange={e => setProductForm(p => ({...p, purchasePrice: e.target.value}))} required /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Alış Fiyatı * (€)</Label><Input type="number" step="0.01" value={productForm.purchasePrice} onChange={e => setProductForm(p => ({...p, purchasePrice: e.target.value}))} required /></div>
+              <div><Label>Adet (stok)</Label><Input type="number" min="0" step="1" value={productForm.quantity} onChange={e => setProductForm(p => ({...p, quantity: e.target.value}))} /><p className="text-[10px] text-slate-400 mt-1">0 = tükendi (satıldı işaretlenir)</p></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Alış Tarihi *</Label><Input type="date" value={productForm.purchaseDate} onChange={e => setProductForm(p => ({...p, purchaseDate: e.target.value}))} required /></div>
