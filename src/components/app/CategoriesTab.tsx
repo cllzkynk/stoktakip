@@ -6,9 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, FolderOpen, Trash2, ChevronRight, FolderTree } from 'lucide-react';
+import { Plus, FolderOpen, Trash2, ChevronRight, FolderTree, FolderPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/components/app/PasswordGate';
 
@@ -43,7 +42,7 @@ export default function CategoriesTab({ refreshKey, onRefresh }: Props) {
         body: JSON.stringify({ name: form.name, parentId: form.parentId || null, userId: authUser?.id }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
-      toast({ title: 'Başarılı', description: 'Kategori eklendi' });
+      toast({ title: 'Başarılı', description: form.parentId ? 'Alt kategori eklendi' : 'Kategori eklendi' });
       setShowAddDialog(false);
       setForm({ name: '', parentId: '' });
       fetchCategories();
@@ -52,7 +51,7 @@ export default function CategoriesTab({ refreshKey, onRefresh }: Props) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Bu kategoriyi silmek istediğinize emin misiniz?')) return;
+    if (!confirm('Bu kategoriyi silmek istediğinize emin misiniz? Alt kategoriler de silinecek.')) return;
     try {
       const res = await fetch(`/api/categories?id=${id}${authUser ? `&userId=${authUser.id}` : ''}`, { method: 'DELETE' });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
@@ -66,17 +65,10 @@ export default function CategoriesTab({ refreshKey, onRefresh }: Props) {
     setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
 
-  // Flatten categories with depth prefix for the select dropdown - unlimited depth
-  const flatCategories = (cats: Category[], prefix = '', depth = 0): { id: string; name: string; depth: number }[] => {
-    let result: { id: string; name: string; depth: number }[] = [];
-    for (const cat of cats) {
-      const indent = '　'.repeat(depth) + (depth > 0 ? '└ ' : '');
-      result.push({ id: cat.id, name: indent + cat.name, depth });
-      if (cat.children?.length) {
-        result = result.concat(flatCategories(cat.children, prefix + cat.name + ' > ', depth + 1));
-      }
-    }
-    return result;
+  const openAddSubcategory = (parentId: string, parentName: string) => {
+    setForm({ name: '', parentId });
+    setShowAddDialog(true);
+    toast({ title: 'Alt kategori', description: `"${parentName}" altına ekleniyor` });
   };
 
   const renderCategory = (cat: Category, depth = 0) => {
@@ -100,6 +92,17 @@ export default function CategoriesTab({ refreshKey, onRefresh }: Props) {
           <FolderOpen className="w-4 h-4 text-amber-500" />
           <span className="font-medium text-sm flex-1">{cat.name}</span>
           <Badge variant="secondary" className="text-xs">{productCount} ürün</Badge>
+
+          {/* Add subcategory button - always visible on hover */}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-xs opacity-0 group-hover:opacity-100 text-emerald-600 hover:bg-emerald-50"
+            onClick={(e) => { e.stopPropagation(); openAddSubcategory(cat.id, cat.name); }}
+            title="Alt kategori ekle"
+          >
+            <FolderPlus className="w-3.5 h-3.5 mr-1" /> Alt
+          </Button>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 text-red-500" onClick={() => handleDelete(cat.id)}>
             <Trash2 className="w-3.5 h-3.5" />
           </Button>
@@ -108,8 +111,6 @@ export default function CategoriesTab({ refreshKey, onRefresh }: Props) {
       </div>
     );
   };
-
-  const flatList = flatCategories(categories);
 
   return (
     <div className="space-y-4">
@@ -122,23 +123,15 @@ export default function CategoriesTab({ refreshKey, onRefresh }: Props) {
             </Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader><DialogTitle>Yeni Kategori</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{form.parentId ? 'Alt Kategori Ekle' : 'Yeni Kategori'}</DialogTitle></DialogHeader>
             <form onSubmit={handleAdd} className="space-y-3">
-              <div><Label>Kategori Adı *</Label><Input value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} required /></div>
-              <div><Label>Üst Kategori</Label>
-                <Select value={form.parentId} onValueChange={v => setForm(f => ({...f, parentId: v === '_none' ? '' : v}))}>
-                  <SelectTrigger><SelectValue placeholder="Ana kategori (opsiyonel)" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">📁 Ana kategori (en üst seviye)</SelectItem>
-                    {flatList.map(c => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">Ekle</Button>
+              <div><Label>Kategori Adı *</Label><Input value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} required autoFocus /></div>
+              {form.parentId && (
+                <div className="p-2 bg-emerald-50 rounded text-xs text-emerald-700">
+                  Üst kategori seçili: kategori ağacına alt öğe olarak eklenecek
+                </div>
+              )}
+              <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">{form.parentId ? 'Alt Kategori Ekle' : 'Ekle'}</Button>
             </form>
           </DialogContent>
         </Dialog>
@@ -150,9 +143,15 @@ export default function CategoriesTab({ refreshKey, onRefresh }: Props) {
             <div className="py-12 text-center">
               <FolderOpen className="w-12 h-12 text-slate-300 mx-auto mb-3" />
               <p className="text-slate-500">Henüz kategori yok</p>
+              <p className="text-slate-400 text-xs mt-1">"Kategori Ekle" butonundan başlayın</p>
             </div>
           ) : (
-            categories.map(cat => renderCategory(cat))
+            <>
+              <p className="text-xs text-slate-400 px-3 py-2 border-b border-slate-100 mb-2">
+                💡 Bir kategorinin üstüne gelip <strong>"Alt"</strong> butonuna basarak alt kategori ekleyebilirsiniz
+              </p>
+              {categories.map(cat => renderCategory(cat))}
+            </>
           )}
         </CardContent>
       </Card>

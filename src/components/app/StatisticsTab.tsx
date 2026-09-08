@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingCart, Megaphone, Wallet, PiggyBank, Receipt, BarChart3 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import CategoryStats from './CategoryStats';
 
 interface Stats {
   totalSpent: number;
@@ -296,6 +297,9 @@ export default function StatisticsTab({ refreshKey }: Props) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Category-based Statistics */}
+      <CategoryStats refreshKey={refreshKey} />
     </div>
   );
 }
