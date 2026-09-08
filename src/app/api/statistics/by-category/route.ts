@@ -175,15 +175,18 @@ export async function GET(req: NextRequest) {
     let inStockCount = 0
     let listedCount = 0
     let totalItemsInStock = 0
+    let totalItemsPurchased = 0
+    let totalItemsSold = 0
     let totalSaleDays = 0
     let saleCount = 0
     const channels: Record<string, { name: string; count: number; revenue: number }> = {}
     const payments: Record<string, { name: string; count: number; revenue: number }> = {}
     const purchasePayments: Record<string, { name: string; spent: number; count: number }> = {}
-    const topProducts: Array<{ name: string; quantity: number; spent: number; revenue: number; status: string }> = []
+    const topProducts: Array<{ name: string; quantity: number; soldQuantity: number; spent: number; revenue: number; status: string }> = []
 
     for (const p of products) {
       totalSpent += p.purchasePrice * p.quantity
+      totalItemsPurchased += p.quantity
       totalProductExpenses += (p.expenses || []).reduce((s, e) => s + e.amount, 0)
       if (p.status === 'sold') soldCount += 1
       else if (p.status === 'listed') listedCount += 1
@@ -199,6 +202,7 @@ export async function GET(req: NextRequest) {
 
       for (const sale of p.sales) {
         totalRevenue += sale.salePrice * sale.quantity
+        totalItemsSold += sale.quantity
         saleCount += 1
         const days = (new Date(sale.saleDate).getTime() - new Date(p.purchaseDate).getTime()) / (1000 * 60 * 60 * 24)
         totalSaleDays += days
@@ -218,13 +222,17 @@ export async function GET(req: NextRequest) {
       }
 
       const revenue = p.sales.reduce((s, sale) => s + sale.salePrice * sale.quantity, 0)
-      topProducts.push({
-        name: p.name,
-        quantity: p.quantity,
-        spent: p.purchasePrice * p.quantity,
-        revenue,
-        status: p.status,
-      })
+      const soldQty = p.sales.reduce((s, sale) => s + sale.quantity, 0)
+      if (soldQty > 0 || revenue > 0) {
+        topProducts.push({
+          name: p.name,
+          quantity: p.quantity,
+          soldQuantity: soldQty,
+          spent: p.purchasePrice * p.quantity,
+          revenue,
+          status: p.status,
+        })
+      }
     }
 
     topProducts.sort((a, b) => b.revenue - a.revenue)
@@ -233,6 +241,8 @@ export async function GET(req: NextRequest) {
       category: node,
       stats: {
         totalProducts: products.length,
+        totalItemsPurchased,
+        totalItemsSold,
         totalSpent,
         totalRevenue,
         totalProductExpenses,

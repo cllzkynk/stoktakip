@@ -29,6 +29,8 @@ interface DetailedStats {
   category: CategoryNode;
   stats: {
     totalProducts: number;
+    totalItemsPurchased: number;
+    totalItemsSold: number;
     totalSpent: number;
     totalRevenue: number;
     totalProductExpenses: number;
@@ -41,7 +43,7 @@ interface DetailedStats {
     channels: { name: string; count: number; revenue: number }[];
     payments: { name: string; count: number; revenue: number }[];
     purchasePayments: { name: string; spent: number; count: number }[];
-    topProducts: { name: string; quantity: number; spent: number; revenue: number; status: string }[];
+    topProducts: { name: string; quantity: number; soldQuantity: number; spent: number; revenue: number; status: string }[];
     childCategories: { id: string; name: string }[];
   };
 }
@@ -199,13 +201,15 @@ export default function CategoryStats({ refreshKey }: { refreshKey: number }) {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div className="p-2.5 bg-blue-50 rounded-lg text-center">
                 <Package className="w-4 h-4 text-blue-500 mx-auto mb-1" />
-                <p className="text-[10px] text-blue-500">Toplam Ürün</p>
+                <p className="text-[10px] text-blue-500">Toplam Ürün Kaydı</p>
                 <p className="text-base font-bold text-blue-700">{detail.stats.totalProducts}</p>
+                <p className="text-[10px] text-blue-400 mt-0.5">{detail.stats.totalItemsPurchased} adet toplam</p>
               </div>
               <div className="p-2.5 bg-emerald-50 rounded-lg text-center">
                 <TrendingUp className="w-4 h-4 text-emerald-500 mx-auto mb-1" />
                 <p className="text-[10px] text-emerald-500">Gelir</p>
                 <p className="text-base font-bold text-emerald-700">{fmt(detail.stats.totalRevenue)}</p>
+                <p className="text-[10px] text-emerald-400 mt-0.5">{detail.stats.totalItemsSold} adet satıldı</p>
               </div>
               <div className="p-2.5 bg-red-50 rounded-lg text-center">
                 <TrendingDown className="w-4 h-4 text-red-500 mx-auto mb-1" />
@@ -314,13 +318,16 @@ export default function CategoryStats({ refreshKey }: { refreshKey: number }) {
             {/* Top Products in this category */}
             {detail.stats.topProducts.length > 0 && (
               <div>
-                <h4 className="text-sm font-semibold mb-2">En Çok Satanlar (bu kategoride)</h4>
+                <h4 className="text-sm font-semibold mb-2">Satılan Ürünler (bu kategoride)</h4>
                 <div className="space-y-1">
                   {detail.stats.topProducts.slice(0, 5).map((p, i) => (
                     <div key={i} className="flex items-center gap-2 p-2 bg-slate-50 rounded text-sm">
                       <span className="text-xs text-slate-400 w-4">#{i + 1}</span>
                       <span className="flex-1 truncate">{p.name}</span>
-                      <Badge variant="secondary" className="text-[10px]">{p.quantity} adet</Badge>
+                      <Badge variant="secondary" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">{p.soldQuantity} satıldı</Badge>
+                      {p.quantity !== p.soldQuantity && (
+                        <Badge variant="secondary" className="text-[10px]">/ {p.quantity} stok</Badge>
+                      )}
                       <span className="font-semibold text-emerald-600">{fmt(p.revenue)}</span>
                     </div>
                   ))}
